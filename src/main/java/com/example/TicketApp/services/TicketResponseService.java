@@ -26,7 +26,6 @@ public class TicketResponseService {
 
     @Autowired
     private UserRespository userRespository;
-
     public TicketResponseDTO createTicketReply(long ticketId, long userId, String role, Map<String, Object> replyData) {
         // Validate role
         validateRole(role);
@@ -41,7 +40,7 @@ public class TicketResponseService {
                 .orElseThrow(() -> new IllegalArgumentException("Ticket not found with ID: " + ticketId));
 
         // Find the user
-        User user = userRespository.findById(userId)
+        User user = userRespository.findById(userId) // Fixed typo
                 .orElseThrow(() -> new IllegalArgumentException("User not found with ID: " + userId));
 
         // Validate user's authorization for the role
@@ -61,14 +60,34 @@ public class TicketResponseService {
         ticket.getResponses().add(savedResponse);
         ticketRepository.save(ticket);
 
+        // Determine the reply user’s email
+        String userEmail = user.getEmail();
+        String agentEmail;
+
+        if (role.equals("AGENT")) {
+            // Ensure ticket.getCustomer() is not null
+            User customer = ticket.getCustomer();
+            if (customer == null) {
+                throw new IllegalStateException("Customer not found for the ticket.");
+            }
+            agentEmail = customer.getEmail();
+        } else {
+            // Ensure ticket.getAgent() is not null
+            User agent = ticket.getAgent();
+            if (agent == null) {
+                throw new IllegalStateException("Agent not found for the ticket.");
+            }
+            agentEmail = agent.getEmail();
+        }
+
         // Map the saved TicketResponse to a TicketResponseDTO and return it
         return new TicketResponseDTO(
                 savedResponse.getResponseId(),
                 ticket.getTicketId(),
                 savedResponse.getResponseText(),
                 savedResponse.getRole().toString(),
-                user.getEmail(), // User's email
-                ticket.getAgent() != null ? ticket.getAgent().getEmail() : null, // Agent's email if available
+                userEmail,
+                agentEmail,
                 savedResponse.getCreatedAt() // Response time
         );
     }

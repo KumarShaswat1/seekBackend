@@ -10,6 +10,7 @@ import com.example.TicketApp.repository.TicketRepository;
 import com.example.TicketApp.repository.TicketResponseRepository;
 import com.example.TicketApp.repository.UserRespository;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.*;
 import org.springframework.stereotype.Service;
 
 
@@ -32,10 +33,10 @@ public class TicketService {
     @Autowired
     private TicketResponseRepository ticketResponseRepository;
 
-    public List<SimpleTicketDTO> getFilteredTickets(long userId, String role, String status, String category) {
+    public Page<SimpleTicketDTO> getFilteredTickets(long userId, String role, String status, String category, int page, int size) {
         // Validate user existence
         User user = userRespository.findById(userId)
-                .orElseThrow(() -> new IllegalArgumentException("User not found with ID: " + userId));
+                .orElseThrow(() -> new IllegalArgumentException("User  not found with ID: " + userId));
 
         List<Ticket> tickets;
 
@@ -48,30 +49,44 @@ public class TicketService {
             throw new IllegalArgumentException("Invalid role. Must be 'AGENT' or 'CUSTOMER'.");
         }
 
-        // Filter and map to SimpleTicketDTO
-        return tickets.stream()
-                .filter(ticket -> filterTickets(ticket, status, category)) // Filter tickets by status and category
-                .map(ticket -> new SimpleTicketDTO(
+        // Manually filter tickets based on status and category
+        List<SimpleTicketDTO> filteredTickets = new ArrayList<>();
+        for (Ticket ticket : tickets) {
+            if (filterTickets(ticket, status, category)) {
+                filteredTickets.add(new SimpleTicketDTO(
                         ticket.getTicketId(),
                         ticket.getDescription(),
                         ticket.getStatus().name(),
                         ticket.getCategory().name(),
                         ticket.getCreatedAt(),
                         ticket.getUpdatedAt(),
-                        ticket.getAgent() != null ? ticket.getAgent().getEmail() : null, // Agent's email (if available)
-                        ticket.getCustomer() != null ? ticket.getCustomer().getEmail() : null // Customer's email
-                ))
-                .collect(Collectors.toList()); // Collect results into a list
-    }
+                        ticket.getAgent() != null ? ticket.getAgent().getEmail() : null,
+                        ticket.getCustomer() != null ? ticket.getCustomer().getEmail() : null
+                ));
+            }
+        }
 
+        // Calculate start and end indices for pagination
+        int start = page * size;
+        int end = Math.min(start + size, filteredTickets.size());
+
+        // Handle case where the requested page exceeds available data
+        if (start >= filteredTickets.size()) {
+            return new PageImpl<>(Collections.emptyList(), PageRequest.of(page, size), filteredTickets.size());
+        }
+
+        // Create a sublist for the current page
+        List<SimpleTicketDTO> paginatedList = filteredTickets.subList(start, end);
+
+        // Return a Page object
+        return new PageImpl<>(paginatedList, PageRequest.of(page, size), filteredTickets.size());
+    }
 
     // Helper method for filtering tickets based on status and category
     private boolean filterTickets(Ticket ticket, String status, String category) {
         return ("ALL".equalsIgnoreCase(status) || status.equalsIgnoreCase(ticket.getStatus().name())) &&
                 ("ALL".equalsIgnoreCase(category) || category.equalsIgnoreCase(ticket.getCategory().name()));
     }
-
-
 
     public Map<String, Long> getCountActiveResolved(long userId, String role, String category) {
         if (role == null || (!role.equalsIgnoreCase("AGENT") && !role.equalsIgnoreCase("CUSTOMER"))) {
@@ -117,35 +132,50 @@ public class TicketService {
     }
 
 
-
-    public TicketDTO searchTicket(long userId, long ticketId) {
+    public TicketDTO searchTicket(long userId, long ticketId, int page, int size) {
         // Validate and retrieve the user
         User user = userRespository.findById(userId)
-                .orElseThrow(() -> new IllegalArgumentException("User not found with ID: " + userId));
+                .orElseThrow(() -> new IllegalArgumentException("User  not found with ID: " + userId));
 
         // Validate and retrieve the ticket
         Ticket ticket = ticketRepository.findById(ticketId)
                 .orElseThrow(() -> new IllegalArgumentException("Ticket not found with ID: " + ticketId));
 
-        // Validate ticket ownership: Ensure the ticket belongs to the user
-        if (!ticket.getCustomer().equals(user)) {
-            throw new IllegalArgumentException("Ticket ID " + ticketId + " is not associated with user ID: " + userId);
+        // Validate ticket ownership or association
+        if (!ticket.getCustomer().equals(user) && (ticket.getAgent() == null || !ticket.getAgent().equals(user))) {
+            throw new IllegalArgumentException("User  ID " + userId + " is not authorized to view ticket ID " + ticketId);
         }
 
-        // Map TicketResponses to TicketResponseDTOs
-        List<TicketResponseDTO> responseDTOs = ticket.getResponses().stream()
-                .map(response -> new TicketResponseDTO(
-                        response.getResponseId(),
-                        ticket.getTicketId(),
-                        response.getResponseText(),
-                        response.getRole().toString(),
-                        response.getUser().getEmail(),
-                        ticket.getAgent() != null ? ticket.getAgent().getEmail() : null, // Add agent's email
-                        response.getCreatedAt() // Add responseTime field
-                ))
-                .collect(Collectors.toList());
+        // Get responses and paginate them
+        List<TicketResponse> responses = Optional.ofNullable(ticket.getResponses())
+                .orElse(Collections.emptyList());
 
-        // Create and return TicketDTO with the mapped responses
+        // Handle case where the requested page exceeds available data
+        if (page < 0 || size <= 0 || page * size >= responses.size()) {
+            return new TicketDTO(ticket.getTicketId(), ticket.getDescription(), ticket.getStatus().name(),
+                    ticket.getCategory().name(), ticket.getCreatedAt(), ticket.getUpdatedAt(), Collections.emptyList());
+        }
+
+        // Paginate responses
+        int start = page * size;
+        int end = Math.min(start + size, responses.size());
+        List<TicketResponse> paginatedResponses = responses.subList(start, end);
+
+        // Map TicketResponses to TicketResponseDTOs
+        List<TicketResponseDTO> responseDTOs = new ArrayList<>();
+        for (TicketResponse response : paginatedResponses) {
+            responseDTOs.add(new TicketResponseDTO(
+                    response.getResponseId(),
+                    ticket.getTicketId(),
+                    response.getResponseText(),
+                    response.getRole() != null ? response.getRole().toString() : "UNKNOWN",
+                    response.getUser () != null ? response.getUser ().getEmail() : "No Email",
+                    ticket.getAgent() != null ? ticket.getAgent().getEmail() : ticket.getCustomer().getEmail(),
+                    response.getCreatedAt()
+            ));
+        }
+
+        // Return the ticket DTO with paginated responses
         return new TicketDTO(
                 ticket.getTicketId(),
                 ticket.getDescription(),
@@ -156,9 +186,6 @@ public class TicketService {
                 responseDTOs
         );
     }
-
-
-
 
     public List<TicketResponseDTO> getAllTicketResponses(long userId, long ticketId) {
 
@@ -258,8 +285,6 @@ public class TicketService {
         logger.info("Assigned agent: " + assignedAgent.getEmail());
         return assignedAgent;
     }
-
-
 
 
 

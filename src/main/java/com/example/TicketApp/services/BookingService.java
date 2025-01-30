@@ -1,13 +1,14 @@
 package com.example.TicketApp.services;
 
+import com.example.TicketApp.CustomErrors.BookingNotFoundException;
+import com.example.TicketApp.CustomErrors.UserNotAuthorizedException;
+import com.example.TicketApp.CustomErrors.UserNotFoundException;
 import com.example.TicketApp.entity.Booking;
 import com.example.TicketApp.entity.User;
 import com.example.TicketApp.repository.BookingRespository;
 import com.example.TicketApp.repository.UserRespository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
-
-import java.util.Optional;
 
 @Service
 public class BookingService {
@@ -19,26 +20,20 @@ public class BookingService {
     private UserRespository userRepository;
 
     public boolean validateBooking(long userId, long bookingId) {
+        // Fetch user using orElseThrow for cleaner code
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new UserNotFoundException("User  not found"));
 
-        Optional<User> userFound = userRepository.findById(userId);
-        if (!userFound.isPresent()) {
-            throw new IllegalArgumentException("User not found");
-        }
+        // Fetch booking using orElseThrow
+        Booking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new BookingNotFoundException("Booking not found"));
 
-
-        Optional<Booking> bookingFound = bookingRepository.findById(bookingId);
-        if (!bookingFound.isPresent()) {
-            throw new IllegalArgumentException("Booking not found");
-        }
-
-
-        Booking booking = bookingFound.get();
-        User user = userFound.get();
-
-        if (!booking.getUser().equals(user)) {
-            throw new IllegalArgumentException("User is not authorized to access this booking");
+        // Check if the user is associated with the booking
+        if (booking.getUser () == null || !booking.getUser().getUserId().equals(user.getUserId())) {
+            throw new UserNotAuthorizedException("User  is not authorized to access this booking");
         }
 
         return true;
     }
 }
+
