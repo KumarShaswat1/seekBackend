@@ -10,16 +10,22 @@ import com.example.TicketApp.repository.TicketRepository;
 import com.example.TicketApp.repository.TicketResponseRepository;
 import com.example.TicketApp.repository.UserRespository;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.annotation.EnableCaching;
 import org.springframework.data.domain.*;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
 
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
 @Service
+
 public class TicketService {
 
 
@@ -88,40 +94,61 @@ public class TicketService {
                 ("ALL".equalsIgnoreCase(category) || category.equalsIgnoreCase(ticket.getCategory().name()));
     }
 
+    @Autowired
+    private RedisTemplate<String, Object> redisTemplate;
+    private static final String CACHE_KEY_PREFIX = "ticket_counts::";
+    private static final long CACHE_TTL = 30; // 30 minutes
+
     public Map<String, Long> getCountActiveResolved(long userId, String role, String category) {
+        // Validate role
         if (role == null || (!role.equalsIgnoreCase("AGENT") && !role.equalsIgnoreCase("CUSTOMER"))) {
             throw new IllegalArgumentException("Invalid role. Role must be 'AGENT' or 'CUSTOMER'.");
         }
 
-        // Retrieve all tickets based on the role
+        // Generate cache key
+        String cacheKey = CACHE_KEY_PREFIX + userId + "::" + role.toUpperCase() + "::" + category;
+
+        // Try to get cached result
+
+        Map<String, Long> cachedResult = (Map<String, Long>) redisTemplate.opsForValue().get(cacheKey);
+        if (cachedResult != null) {
+            return cachedResult;
+        }
+
+        // Cache miss - compute fresh result
         List<Ticket> tickets = ticketRepository.findAll().stream()
                 .filter(ticket -> {
                     if (role.equalsIgnoreCase("AGENT")) {
                         return ticket.getAgent() != null && ticket.getAgent().getUserId() == userId;
-                    } else { // Role is CUSTOMER
+                    } else {
                         return ticket.getCustomer() != null && ticket.getCustomer().getUserId() == userId;
                     }
                 })
                 .collect(Collectors.toList());
 
-        // Count active tickets for the given category or "ALL"
         long activeCount = tickets.stream()
-                .filter(ticket -> filterTicketsCategory(ticket, "ACTIVE", category))
+                .filter(ticket -> ticket.getStatus() == Ticket.Status.ACTIVE)
                 .count();
 
-        // Count resolved tickets for the given category or "ALL"
         long resolvedCount = tickets.stream()
-                .filter(ticket -> filterTicketsCategory(ticket, "RESOLVED", category))
+                .filter(ticket -> ticket.getStatus() == Ticket.Status.RESOLVED)
                 .count();
 
-        // Prepare the result map with counts
-        Map<String, Long> count = new HashMap<>();
-        count.put("Active_tickets", activeCount);
-        count.put("Resolved_tickets", resolvedCount);
+        Map<String, Long> counts = new HashMap<>();
+        counts.put("active", activeCount);
+        counts.put("resolved", resolvedCount);
 
-        return count;
+        // Cache the result with TTL
+        redisTemplate.opsForValue().set(cacheKey, counts, Duration.ofMinutes(CACHE_TTL));
+
+        return counts;
     }
 
+    // Clear cache when tickets are updated
+    @CacheEvict(value = "ticket_counts", allEntries = true)
+    public void clearTicketCountsCache() {
+        // Intentionally blank - annotation does the work
+    }
     // A helper method to filter tickets based on status and category
     private boolean filterTicketsCategory(Ticket ticket, String status, String category) {
         if ("ALL".equalsIgnoreCase(category)) {
