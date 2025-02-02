@@ -1,5 +1,6 @@
 package com.example.TicketApp.entity;
 
+import com.example.TicketApp.enums.Role;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonManagedReference;
 import lombok.Data;
@@ -69,7 +70,4 @@ public class User {
     @JsonManagedReference
     private List<TicketResponse> ticketResponses = new ArrayList<>();
 
-    public enum Role {
-        CUSTOMER, AGENT
-    }
 }

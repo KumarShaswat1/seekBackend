@@ -1,5 +1,7 @@
 package com.example.TicketApp.entity;
 
+import com.example.TicketApp.enums.Category;
+import com.example.TicketApp.enums.Status;
 import com.fasterxml.jackson.annotation.JsonBackReference;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonManagedReference;
@@ -63,11 +65,7 @@ public class Ticket {
     @JsonManagedReference  // Proper serialization
     private List<TicketResponse> responses = new ArrayList<>();
 
-    public enum Category {
-        PREBOOKING, POSTBOOKING
-    }
 
-    public enum Status {
-        RESOLVED, ACTIVE
-    }
+
+
 }

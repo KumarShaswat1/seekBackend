@@ -1,5 +1,6 @@
 package com.example.TicketApp.entity;
 
+import com.example.TicketApp.enums.Role;
 import com.fasterxml.jackson.annotation.JsonBackReference;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import lombok.Data;
@@ -44,7 +45,4 @@ public class TicketResponse {
     @UpdateTimestamp
     private LocalDateTime updatedAt;
 
-    public enum Role {
-        CUSTOMER, AGENT
-    }
 }

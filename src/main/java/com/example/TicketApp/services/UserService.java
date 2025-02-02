@@ -2,6 +2,7 @@ package com.example.TicketApp.services;
 
 import com.example.TicketApp.DTO.UserSignRequestDTO;
 import com.example.TicketApp.entity.User;
+import com.example.TicketApp.enums.Role;
 import com.example.TicketApp.repository.UserRespository;
 import org.springframework.beans.factory.annotation.Autowired;
 
@@ -28,7 +29,7 @@ public class UserService {
         User user = new User();
         user.setEmail(userSignRequestDTO.getEmail());
         user.setPassword(userSignRequestDTO.getPassword());  // Save password as plain text
-        user.setRole(User.Role.valueOf(userSignRequestDTO.getRole().toUpperCase()));  // Convert role to Enum
+        user.setRole(Role.valueOf(userSignRequestDTO.getRole().toUpperCase()));  // Convert role to Enum
 
         return userRepository.save(user);
     }

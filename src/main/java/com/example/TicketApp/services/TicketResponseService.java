@@ -4,6 +4,8 @@ import com.example.TicketApp.DTO.TicketResponseDTO;
 import com.example.TicketApp.entity.Ticket;
 import com.example.TicketApp.entity.TicketResponse;
 import com.example.TicketApp.entity.User;
+import com.example.TicketApp.enums.Role;
+import com.example.TicketApp.enums.Status;
 import com.example.TicketApp.repository.TicketRepository;
 import com.example.TicketApp.repository.TicketResponseRepository;
 import com.example.TicketApp.repository.UserRespository;
@@ -50,7 +52,7 @@ public class TicketResponseService {
         TicketResponse ticketResponse = new TicketResponse();
         ticketResponse.setTicket(ticket);
         ticketResponse.setUser(user);
-        ticketResponse.setRole(TicketResponse.Role.valueOf(role.toUpperCase())); // Ensure role is valid
+        ticketResponse.setRole(Role.valueOf(role.toUpperCase())); // Ensure role is valid
         ticketResponse.setResponseText(replyData.get("responseText").toString());
 
         // Save the response to the repository
@@ -136,7 +138,7 @@ public class TicketResponseService {
                 .orElseThrow(() -> new IllegalArgumentException("User not found"));
 
         // Ensure only agents can update the status
-        if (user.getRole() != User.Role.AGENT) {
+        if (user.getRole() != Role.AGENT) {
             throw new IllegalArgumentException("Access denied. Only agents can update the status.");
         }
 
@@ -150,7 +152,7 @@ public class TicketResponseService {
         }
 
         // Update ticket status to RESOLVED
-        ticket.setStatus(Ticket.Status.RESOLVED);
+        ticket.setStatus(Status.RESOLVED);
         ticket.setResolvedAt(java.time.LocalDateTime.now());
 
         // Save the updated ticket to the database

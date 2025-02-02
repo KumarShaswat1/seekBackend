@@ -6,6 +6,9 @@ import com.example.TicketApp.DTO.TicketResponseDTO;
 import com.example.TicketApp.entity.Ticket;
 import com.example.TicketApp.entity.TicketResponse;
 import com.example.TicketApp.entity.User;
+import com.example.TicketApp.enums.Category;
+import com.example.TicketApp.enums.Role;
+import com.example.TicketApp.enums.Status;
 import com.example.TicketApp.repository.TicketRepository;
 import com.example.TicketApp.repository.TicketResponseRepository;
 import com.example.TicketApp.repository.UserRespository;
@@ -127,11 +130,11 @@ public class TicketService {
                 .collect(Collectors.toList());
 
         long activeCount = tickets.stream()
-                .filter(ticket -> ticket.getStatus() == Ticket.Status.ACTIVE)
+                .filter(ticket -> ticket.getStatus() == Status.ACTIVE)
                 .count();
 
         long resolvedCount = tickets.stream()
-                .filter(ticket -> ticket.getStatus() == Ticket.Status.RESOLVED)
+                .filter(ticket -> ticket.getStatus() == Status.RESOLVED)
                 .count();
 
         Map<String, Long> counts = new HashMap<>();
@@ -249,7 +252,7 @@ public class TicketService {
     private static final Logger logger = Logger.getLogger(TicketService.class.getName());
     private static long count = 0;
 
-    public Ticket createTicket(long userId, String category, String description) {
+    public Ticket createTicket(long userId, String category,String role,long booking_id, String description) {
         logger.info("Starting to create ticket for userId: " + userId + " with category: " + category);
 
         try {
@@ -262,7 +265,7 @@ public class TicketService {
 
             logger.info("User found: " + customer.getEmail());
 
-            if (!customer.getRole().equals(User.Role.CUSTOMER)) {
+            if (!customer.getRole().equals(Role.CUSTOMER)) {
                 logger.severe("User with ID: " + userId + " is not a customer.");
                 throw new IllegalArgumentException("Only customers can create tickets");
             }
@@ -276,8 +279,8 @@ public class TicketService {
             // Create the ticket
             Ticket ticket = new Ticket();
             ticket.setCustomer(customer);
-            ticket.setCategory(Ticket.Category.valueOf(category.toUpperCase()));
-            ticket.setStatus(Ticket.Status.ACTIVE);
+            ticket.setCategory(Category.valueOf(category.toUpperCase()));
+            ticket.setStatus(Status.ACTIVE);
             ticket.setDescription(description);
 
             // Assign an agent to the ticket
@@ -300,7 +303,7 @@ public class TicketService {
 
     private User assignAgentToTicket() {
         // Find agents with the role AGENT
-        List<User> agents = userRespository.findByRole(User.Role.AGENT);
+        List<User> agents = userRespository.findByRole(Role.AGENT);
 
         if (agents.isEmpty()) {
             logger.severe("No available agents for ticket assignment");
