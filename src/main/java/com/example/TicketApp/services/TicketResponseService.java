@@ -9,41 +9,48 @@ import com.example.TicketApp.enums.Status;
 import com.example.TicketApp.repository.TicketRepository;
 import com.example.TicketApp.repository.TicketResponseRepository;
 import com.example.TicketApp.repository.UserRespository;
-import org.springframework.beans.factory.annotation.Autowired;
+import com.example.TicketApp.CustomErrors.BookingNotFoundException;
+import com.example.TicketApp.CustomErrors.UserNotAuthorizedException;
+import com.example.TicketApp.CustomErrors.UserNotFoundException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
-import java.util.ArrayList;
 import java.util.Map;
-
-
 
 @Service
 public class TicketResponseService {
 
-    @Autowired
-    private TicketRepository ticketRepository;
+    private static final Logger logger = LoggerFactory.getLogger(TicketResponseService.class);
 
-    @Autowired
-    private TicketResponseRepository ticketResponseRepository;
+    private final TicketRepository ticketRepository;
+    private final TicketResponseRepository ticketResponseRepository;
+    private final UserRespository userRespository;
 
-    @Autowired
-    private UserRespository userRespository;
+    // Constructor Injection
+    public TicketResponseService(TicketRepository ticketRepository, TicketResponseRepository ticketResponseRepository, UserRespository userRespository) {
+        this.ticketRepository = ticketRepository;
+        this.ticketResponseRepository = ticketResponseRepository;
+        this.userRespository = userRespository;
+    }
+
     public TicketResponseDTO createTicketReply(long ticketId, long userId, String role, Map<String, Object> replyData) {
         // Validate role
         validateRole(role);
 
         // Ensure reply data contains valid 'responseText'
         if (replyData == null || !replyData.containsKey("responseText") || replyData.get("responseText") == null) {
+            logger.error("Reply data must include a non-null 'responseText' field.");
             throw new IllegalArgumentException("Reply data must include a non-null 'responseText' field.");
         }
 
         // Find the ticket
         Ticket ticket = ticketRepository.findById(ticketId)
-                .orElseThrow(() -> new IllegalArgumentException("Ticket not found with ID: " + ticketId));
+                .orElseThrow(() -> new BookingNotFoundException("Ticket not found with ID: " + ticketId));
 
         // Find the user
-        User user = userRespository.findById(userId) // Fixed typo
-                .orElseThrow(() -> new IllegalArgumentException("User not found with ID: " + userId));
+        User user = userRespository.findById(userId)
+                .orElseThrow(() -> new UserNotFoundException("User not found with ID: " + userId));
 
         // Validate user's authorization for the role
         validateAuthorization(ticket, user, role);
@@ -70,6 +77,7 @@ public class TicketResponseService {
             // Ensure ticket.getCustomer() is not null
             User customer = ticket.getCustomer();
             if (customer == null) {
+                logger.error("Customer not found for the ticket.");
                 throw new IllegalStateException("Customer not found for the ticket.");
             }
             agentEmail = customer.getEmail();
@@ -77,6 +85,7 @@ public class TicketResponseService {
             // Ensure ticket.getAgent() is not null
             User agent = ticket.getAgent();
             if (agent == null) {
+                logger.error("Agent not found for the ticket.");
                 throw new IllegalStateException("Agent not found for the ticket.");
             }
             agentEmail = agent.getEmail();
@@ -97,16 +106,16 @@ public class TicketResponseService {
     // Update a ticket response
     public TicketResponse updateTicketResponse(long userId, long ticketId, long responseId, String updateText) {
         User user = userRespository.findById(userId)
-                .orElseThrow(() -> new IllegalArgumentException("User not found"));
+                .orElseThrow(() -> new UserNotFoundException("User not found"));
 
         Ticket ticket = ticketRepository.findById(ticketId)
-                .orElseThrow(() -> new IllegalArgumentException("Ticket not found"));
+                .orElseThrow(() -> new BookingNotFoundException("Ticket not found"));
 
         TicketResponse ticketResponse = ticketResponseRepository.findById(responseId)
                 .orElseThrow(() -> new IllegalArgumentException("Reply not found"));
 
         if (!ticketResponse.getUser().equals(user)) {
-            throw new IllegalArgumentException("User is not authorized to update this reply");
+            throw new UserNotAuthorizedException("User is not authorized to update this reply");
         }
 
         ticketResponse.setResponseText(updateText);
@@ -116,16 +125,16 @@ public class TicketResponseService {
     // Delete a ticket response
     public void deleteTicketResponse(long userId, long ticketId, long responseId) {
         User user = userRespository.findById(userId)
-                .orElseThrow(() -> new IllegalArgumentException("User not found"));
+                .orElseThrow(() -> new UserNotFoundException("User not found"));
 
         Ticket ticket = ticketRepository.findById(ticketId)
-                .orElseThrow(() -> new IllegalArgumentException("Ticket not found"));
+                .orElseThrow(() -> new BookingNotFoundException("Ticket not found"));
 
         TicketResponse ticketResponse = ticketResponseRepository.findById(responseId)
                 .orElseThrow(() -> new IllegalArgumentException("Reply not found"));
 
         if (!ticketResponse.getUser().equals(user)) {
-            throw new IllegalArgumentException("User is not authorized to delete this reply");
+            throw new UserNotAuthorizedException("User is not authorized to delete this reply");
         }
 
         ticketResponseRepository.delete(ticketResponse);
@@ -135,20 +144,20 @@ public class TicketResponseService {
     public boolean updateTicketResponseStatus(long userId, long ticketId) {
         // Find the user by ID
         User user = userRespository.findById(userId)
-                .orElseThrow(() -> new IllegalArgumentException("User not found"));
+                .orElseThrow(() -> new UserNotFoundException("User not found"));
 
         // Ensure only agents can update the status
         if (user.getRole() != Role.AGENT) {
-            throw new IllegalArgumentException("Access denied. Only agents can update the status.");
+            throw new UserNotAuthorizedException("Access denied. Only agents can update the status.");
         }
 
         // Find the ticket by ID
         Ticket ticket = ticketRepository.findById(ticketId)
-                .orElseThrow(() -> new IllegalArgumentException("Ticket not found"));
+                .orElseThrow(() -> new BookingNotFoundException("Ticket not found"));
 
         // Ensure the user is the assigned agent for this ticket
         if (ticket.getAgent() == null || !ticket.getAgent().equals(user)) {
-            throw new IllegalArgumentException("User is not authorized to update the status of this ticket.");
+            throw new UserNotAuthorizedException("User is not authorized to update the status of this ticket.");
         }
 
         // Update ticket status to RESOLVED
@@ -161,10 +170,10 @@ public class TicketResponseService {
         return true;
     }
 
-
     // Helper method: Validate role
     private void validateRole(String role) {
         if (role == null || (!role.equalsIgnoreCase("AGENT") && !role.equalsIgnoreCase("CUSTOMER"))) {
+            logger.error("Invalid role. Role must be 'AGENT' or 'CUSTOMER'.");
             throw new IllegalArgumentException("Invalid role. Role must be 'AGENT' or 'CUSTOMER'.");
         }
     }
@@ -173,11 +182,13 @@ public class TicketResponseService {
     private void validateAuthorization(Ticket ticket, User user, String role) {
         if ("AGENT".equalsIgnoreCase(role)) {
             if (ticket.getAgent() == null || !ticket.getAgent().equals(user)) {
-                throw new IllegalArgumentException("User is not authorized to reply as an agent for this ticket.");
+                logger.error("User is not authorized to reply as an agent for this ticket.");
+                throw new UserNotAuthorizedException("User is not authorized to reply as an agent for this ticket.");
             }
         } else if ("CUSTOMER".equalsIgnoreCase(role)) {
             if (ticket.getCustomer() == null || !ticket.getCustomer().equals(user)) {
-                throw new IllegalArgumentException("User is not authorized to reply as a customer for this ticket.");
+                logger.error("User is not authorized to reply as a customer for this ticket.");
+                throw new UserNotAuthorizedException("User is not authorized to reply as a customer for this ticket.");
             }
         }
     }

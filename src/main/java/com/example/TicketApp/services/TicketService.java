@@ -6,6 +6,7 @@ import com.example.TicketApp.CustomErrors.UserNotFoundException;
 import com.example.TicketApp.DTO.SimpleTicketDTO;
 import com.example.TicketApp.DTO.TicketDTO;
 import com.example.TicketApp.DTO.TicketResponseDTO;
+import com.example.TicketApp.constants.Constants;
 import com.example.TicketApp.entity.Booking;
 import com.example.TicketApp.entity.Ticket;
 import com.example.TicketApp.entity.TicketResponse;
@@ -17,41 +18,45 @@ import com.example.TicketApp.repository.BookingRespository;
 import com.example.TicketApp.repository.TicketRepository;
 import com.example.TicketApp.repository.TicketResponseRepository;
 import com.example.TicketApp.repository.UserRespository;
-import org.springframework.beans.factory.annotation.Autowired;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.data.domain.*;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
-
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.*;
-import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
 @Service
-
 public class TicketService {
 
+    private static final Logger logger = LoggerFactory.getLogger(TicketService.class);
 
+    public static long count=0;
+    private final UserRespository userRespository;
+    private final TicketRepository ticketRepository;
+    private final TicketResponseRepository ticketResponseRepository;
+    private final BookingRespository bookingRespository;
+    private final RedisTemplate<String, Object> redisTemplate;
 
-    @Autowired
-    private UserRespository userRespository;
-
-    @Autowired
-    private TicketRepository ticketRepository;
-
-    @Autowired
-    private TicketResponseRepository ticketResponseRepository;
-
-    @Autowired
-    private BookingRespository bookingRespository;
+    // Constructor Injection
+    public TicketService(UserRespository userRespository, TicketRepository ticketRepository, TicketResponseRepository ticketResponseRepository,
+                         BookingRespository bookingRespository, RedisTemplate<String, Object> redisTemplate) {
+        this.userRespository = userRespository;
+        this.ticketRepository = ticketRepository;
+        this.ticketResponseRepository = ticketResponseRepository;
+        this.bookingRespository = bookingRespository;
+        this.redisTemplate = redisTemplate;
+    }
 
     public Map<String, List<SimpleTicketDTO>> getFilteredTickets(long userId, String role, String status) {
         // Validate user existence
         User user = userRespository.findById(userId)
-                .orElseThrow(() -> new IllegalArgumentException("User not found with ID: " + userId));
+                .orElseThrow(() -> new UserNotFoundException("User not found with ID: " + userId));
 
         List<Ticket> tickets;
 
@@ -103,11 +108,6 @@ public class TicketService {
         return ticket.getBooking() == null;
     }
 
-    @Autowired
-    private RedisTemplate<String, Object> redisTemplate;
-    private static final String CACHE_KEY_PREFIX = "ticket_counts::";
-    private static final long CACHE_TTL = 30; // 30 minutes
-
     public Map<String, Long> getCountActiveResolved(long userId, String role, String category) {
         // Validate role
         if (role == null || (!role.equalsIgnoreCase("AGENT") && !role.equalsIgnoreCase("CUSTOMER"))) {
@@ -115,10 +115,9 @@ public class TicketService {
         }
 
         // Generate cache key
-        String cacheKey = CACHE_KEY_PREFIX + userId + "::" + role.toUpperCase() + "::" + category;
+        String cacheKey = Constants.CACHE_KEY_PREFIX + userId + "::" + role.toUpperCase() + "::" + category;
 
         // Try to get cached result
-
         Map<String, Long> cachedResult = (Map<String, Long>) redisTemplate.opsForValue().get(cacheKey);
         if (cachedResult != null) {
             return cachedResult;
@@ -148,7 +147,7 @@ public class TicketService {
         counts.put("resolved", resolvedCount);
 
         // Cache the result with TTL
-        redisTemplate.opsForValue().set(cacheKey, counts, Duration.ofMinutes(CACHE_TTL));
+        redisTemplate.opsForValue().set(cacheKey, counts, Duration.ofMinutes(Constants.CACHE_TTL));
 
         return counts;
     }
@@ -158,28 +157,19 @@ public class TicketService {
     public void clearTicketCountsCache() {
         // Intentionally blank - annotation does the work
     }
-    // A helper method to filter tickets based on status and category
-    private boolean filterTicketsCategory(Ticket ticket, String status, String category) {
-        if ("ALL".equalsIgnoreCase(category)) {
-            return ticket.getStatus().name().equalsIgnoreCase(status);
-        }
-        return ticket.getStatus().name().equalsIgnoreCase(status) &&
-                ticket.getCategory().name().equalsIgnoreCase(category);
-    }
-
 
     public TicketDTO searchTicket(long userId, long ticketId, int page, int size) {
         // Validate and retrieve the user
         User user = userRespository.findById(userId)
-                .orElseThrow(() -> new IllegalArgumentException("User  not found with ID: " + userId));
+                .orElseThrow(() -> new UserNotFoundException("User not found with ID: " + userId));
 
         // Validate and retrieve the ticket
         Ticket ticket = ticketRepository.findById(ticketId)
-                .orElseThrow(() -> new IllegalArgumentException("Ticket not found with ID: " + ticketId));
+                .orElseThrow(() -> new BookingNotFoundException("Ticket not found with ID: " + ticketId));
 
         // Validate ticket ownership or association
         if (!ticket.getCustomer().equals(user) && (ticket.getAgent() == null || !ticket.getAgent().equals(user))) {
-            throw new IllegalArgumentException("User  ID " + userId + " is not authorized to view ticket ID " + ticketId);
+            throw new UserNotAuthorizedException("User ID " + userId + " is not authorized to view ticket ID " + ticketId);
         }
 
         // Get responses and paginate them
@@ -205,7 +195,7 @@ public class TicketService {
                     ticket.getTicketId(),
                     response.getResponseText(),
                     response.getRole() != null ? response.getRole().toString() : "UNKNOWN",
-                    response.getUser () != null ? response.getUser ().getEmail() : "No Email",
+                    response.getUser() != null ? response.getUser().getEmail() : "No Email",
                     ticket.getAgent() != null ? ticket.getAgent().getEmail() : ticket.getCustomer().getEmail(),
                     response.getCreatedAt()
             ));
@@ -224,18 +214,13 @@ public class TicketService {
     }
 
     public List<TicketResponseDTO> getAllTicketResponses(long userId, long ticketId) {
-
         Ticket ticket = ticketRepository.findById(ticketId)
-                .orElseThrow(() -> new IllegalArgumentException("Ticket not found with ID: " + ticketId));
-
+                .orElseThrow(() -> new BookingNotFoundException("Ticket not found with ID: " + ticketId));
 
         List<TicketResponse> ticketResponses = ticket.getResponses();
-
-
         List<TicketResponseDTO> repliesDTO = new ArrayList<>();
         for (TicketResponse ticketResponse : ticketResponses) {
             User user = ticketResponse.getUser();
-
 
             TicketResponseDTO responseDTO = new TicketResponseDTO(
                     ticketResponse.getResponseId(),                // Response ID
@@ -252,10 +237,6 @@ public class TicketService {
 
         return repliesDTO;
     }
-
-
-    private static final Logger logger = Logger.getLogger(TicketService.class.getName());
-    private static long count = 0;
 
     public Ticket createTicket(long userId, String bookingId, String description, String role) {
         logger.info("Creating ticket for userId: " + userId + " with bookingId: " + bookingId);
@@ -296,22 +277,19 @@ public class TicketService {
         return ticketRepository.save(ticket);
     }
 
-
-
-
     private User assignAgentToTicket() {
         // Find agents with the role AGENT
         List<User> agents = userRespository.findByRole(Role.AGENT);
 
         if (agents.isEmpty()) {
-            logger.severe("No available agents for ticket assignment");
+            logger.error("No available agents for ticket assignment");
             throw new IllegalStateException("No available agents for ticket assignment");
         }
 
         // Round-robin agent selection
+
         User assignedAgent = agents.get((int) (count++ % agents.size()));
         logger.info("Assigned agent: " + assignedAgent.getEmail());
         return assignedAgent;
     }
-
 }
