@@ -1,7 +1,11 @@
 package com.example.TicketApp.controller;
 
+import com.example.TicketApp.CustomErrors.BookingNotFoundException;
+import com.example.TicketApp.CustomErrors.UserNotAuthorizedException;
+import com.example.TicketApp.CustomErrors.UserNotFoundException;
 import com.example.TicketApp.DTO.SimpleTicketDTO;
 import com.example.TicketApp.DTO.TicketDTO;
+import com.example.TicketApp.DTO.TicketRequestDTO;
 import com.example.TicketApp.DTO.TicketResponseDTO;
 import com.example.TicketApp.entity.Ticket;
 import com.example.TicketApp.services.TicketResponseService;
@@ -28,34 +32,40 @@ public class TicketController {
     @Autowired
     private TicketResponseService ticketResponseService;
 
-    @GetMapping("/search")
-    public ResponseEntity<Map<String, Object>> searchTickets(
-            @RequestParam long userId,
-            @RequestParam String role,
-            @RequestParam String status,
-            @RequestParam String category,
-            @RequestParam(defaultValue = "0") int page, // Default to the first page
-            @RequestParam(defaultValue = "10") int size // Default to 10 items per page
-    ) {
-        Map<String, Object> response = new HashMap<>();
-        try {
-            // Fetch paginated tickets
-            Page<SimpleTicketDTO> paginatedTickets = ticketService.getFilteredTickets(userId, role, status, category, page, size);
-            response.put("status", "success");
-            response.put("data", Collections.singletonMap("tickets", paginatedTickets.getContent()));
-            response.put("totalElements", paginatedTickets.getTotalElements());
-            response.put("totalPages", paginatedTickets.getTotalPages());
-            return ResponseEntity.ok(response);
-        } catch (IllegalArgumentException e) {
-            response.put("status", "error");
-            response.put("message", e.getMessage());
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
-        } catch (Exception e) {
-            response.put("status", "error");
-            response.put("message", "Internal server error");
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+
+        @GetMapping("/search")
+        public ResponseEntity<?> searchTickets(
+                @RequestParam long user_id,
+                @RequestParam String role,
+                @RequestParam(required = false, defaultValue = "ALL") String ticket_status) {
+
+            Map<String, Object> response = new HashMap<>();
+            try {
+                Map<String, List<SimpleTicketDTO>> tickets = ticketService.getFilteredTickets(user_id, role, ticket_status);
+
+                response.put("status", "success");
+                response.put("data", tickets);
+
+                return ResponseEntity.ok(response);
+            } catch (BookingNotFoundException e) {
+                response.put("status", "error");
+                response.put("message", e.getMessage());
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
+            } catch (IllegalArgumentException e) {
+                response.put("status", "error");
+                response.put("message", e.getMessage());
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+            } catch (Exception e) {
+                response.put("status", "error");
+                response.put("message", "Internal server error");
+                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+            }
         }
-    }
+
+
+
+
+
 
     @GetMapping("/search/{userId}/{ticketId}")
     public ResponseEntity<Map<String, Object>> searchTicket(
@@ -139,17 +149,15 @@ public class TicketController {
     private static final Logger logger = Logger.getLogger(TicketService.class.getName());
 
     @PostMapping
-    public ResponseEntity<?> createTicket(@RequestParam long userId,
-                                          @RequestParam String category,
-                                          @RequestParam(required = false) String description) {
-
+    public ResponseEntity<?> createTicket(@RequestBody TicketRequestDTO request) {
         Map<String, Object> response = new HashMap<>();
         try {
-            if (description == null || description.isEmpty()) {
-                description = "No description provided by the user.";
-            }
-
-            Ticket createdTicket = ticketService.createTicket(userId, category, description);
+            Ticket createdTicket = ticketService.createTicket(
+                    request.getUserId(),
+                    request.getBookingId(),
+                    request.getDescription(),
+                    request.getRole()
+            );
             response.put("status", "success");
             Map<String, Object> data = new HashMap<>();
             data.put("ticketId", createdTicket.getTicketId());
@@ -157,16 +165,29 @@ public class TicketController {
             response.put("data", data);
 
             return ResponseEntity.status(HttpStatus.CREATED).body(response);
+
+        } catch (UserNotFoundException e) {
+            response.put("status", "error");
+            response.put("message", e.getMessage());
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);  // 404 Not Found
         } catch (IllegalArgumentException e) {
-            logger.severe("Bad request: " + e.getMessage());
             response.put("status", "error");
             response.put("message", e.getMessage());
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);  // 400 Bad Request
+        } catch (BookingNotFoundException e) {
+            response.put("status", "error");
+            response.put("message", "Invalid booking id.");
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);  // 404 Not Found
+        } catch (UserNotAuthorizedException e) {
+            response.put("status", "error");
+            response.put("message", e.getMessage());
+            return ResponseEntity.status (HttpStatus.FORBIDDEN).body(response);  // 403 Forbidden
         } catch (Exception e) {
-            logger.severe("Internal server error: " + e.getMessage());
             response.put("status", "error");
             response.put("message", "Internal server error");
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);  // 500 Internal Server Error
         }
     }
+
+
 }
