@@ -18,30 +18,11 @@ public class Constants {
     public static final String MESSAGE_USER_ALREADY_EXISTS = "User with this email already exists";
     public static final String MESSAGE_INVALID_ROLE = "Role must be 'CUSTOMER' or 'AGENT'";
 
-    // HTTP Status Codes (Numeric)
-    public static final int HTTP_STATUS_CREATED = 201;
-    public static final int HTTP_STATUS_OK = 200;
-    public static final int HTTP_STATUS_BAD_REQUEST = 400;
-    public static final int HTTP_STATUS_NOT_FOUND = 404;
-    public static final int HTTP_STATUS_UNAUTHORIZED = 401;
-    public static final int HTTP_STATUS_FORBIDDEN = 403;
-
-    // Roles
-    public static final String ROLE_CUSTOMER = "CUSTOMER";
-    public static final String ROLE_AGENT = "AGENT";
-
     // Ticket Status
     public static final String STATUS_ALL = "ALL";
-    public static final String STATUS_ACTIVE = "ACTIVE";
-    public static final String STATUS_RESOLVED = "RESOLVED";
-    public static final String STATUS_PREBOOKING = "Prebooking";
-    public static final String STATUS_POSTBOOKING = "Postbooking";
 
     // Cache Settings
     public static final String CACHE_KEY_PREFIX = "ticket_counts::";
     public static final long CACHE_TTL = 30; // 30 minutes
 
-    // Other Constants
-    public static final String NO_EMAIL = "No Email";
-    public static final String UNKNOWN = "UNKNOWN";
 }

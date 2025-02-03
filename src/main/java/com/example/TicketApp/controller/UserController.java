@@ -55,6 +55,7 @@ public class UserController {
         try {
             logger.info("Login requested for email: {}", userSignRequestDTO.getEmail());
             Optional<User> existingUser = userRespository.findByEmail(userSignRequestDTO.getEmail());
+
             if (!existingUser.isPresent()) {
                 response.put("status", Constants.STATUS_ERROR);
                 response.put("message", Constants.MESSAGE_USER_NOT_FOUND);
@@ -62,14 +63,24 @@ public class UserController {
             }
 
             User user = existingUser.get();
+
+            // Validate Password
             if (!user.getPassword().equals(userSignRequestDTO.getPassword())) {
                 response.put("status", Constants.STATUS_ERROR);
                 response.put("message", Constants.MESSAGE_INVALID_USERNAME_OR_PASSWORD);
                 return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(response);
             }
 
+            // Check if the role in DTO matches the role in the database for this user
+            if (!hasValidRole(userSignRequestDTO.getRole(), String.valueOf(user.getRole()))) {
+                response.put("status", Constants.STATUS_ERROR);
+                response.put("message", "Access denied: User does not have the required role.");
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).body(response);
+            }
+
             response.put("status", Constants.STATUS_SUCCESS);
             response.put("message", Constants.MESSAGE_LOGIN_SUCCESSFUL);
+
             Map<String, Object> userData = new HashMap<>();
             userData.put("user_id", user.getUserId());
             userData.put("email", user.getEmail());
@@ -83,6 +94,13 @@ public class UserController {
             response.put("message", Constants.MESSAGE_INTERNAL_SERVER_ERROR);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
         }
+    }
+
+    // Helper method to check if the role from DTO matches the user's role from the database
+    private boolean hasValidRole(String roleFromDTO, String userRole) {
+        // Check if role from DTO is valid and matches the user's role in the database
+        return roleFromDTO != null && (roleFromDTO.equals("CUSTOMER") || roleFromDTO.equals("AGENT"))
+                && roleFromDTO.equals(userRole);
     }
 }
 
