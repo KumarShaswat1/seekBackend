@@ -15,7 +15,7 @@ import java.util.Optional;
 public interface TicketResponseRepository extends JpaRepository<TicketResponse,Long> {
     Optional<TicketResponse> findById(long responseId);
 
-    @Query("SELECT tr FROM TicketResponse tr WHERE tr.ticket = :ticket")
+
     Page<TicketResponse> findByTicket(@Param("ticket") Ticket ticket, Pageable pageable);
 
 }

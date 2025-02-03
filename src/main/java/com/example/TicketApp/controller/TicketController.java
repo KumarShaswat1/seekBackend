@@ -14,9 +14,14 @@ import com.example.TicketApp.services.TicketService;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.PageRequest;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+
 
 import java.util.*;
 
@@ -39,15 +44,26 @@ public class TicketController {
     public ResponseEntity<?> searchTickets(
             @RequestParam long user_id,
             @RequestParam String role,
-            @RequestParam(required = false, defaultValue = Constants.STATUS_ALL) String ticket_status) {
+            @RequestParam String status,
+            @RequestParam(defaultValue = "0") int page,     // Default page is 0 (first page)
+            @RequestParam(defaultValue = "10") int size) {  // Default size is 10 items per page
 
         Map<String, Object> response = new HashMap<>();
         try {
-            logger.info("Searching tickets for userId: {}, role: {}, status: {}", user_id, role, ticket_status);
-            Map<String, List<SimpleTicketDTO>> tickets = ticketService.getFilteredTickets(user_id, role, ticket_status);
+            logger.info("Searching tickets for userId: {}, role: {}, status: {}, page: {}, size: {}",
+                    user_id, role, status, page, size);
 
+            // Create a Pageable object for pagination
+            Pageable pageable = (Pageable) PageRequest.of(page, size);
+
+            // Get paginated results from the service layer
+            Page<SimpleTicketDTO> tickets = ticketService.getFilteredTickets(user_id, role, status, pageable);
+
+            // Prepare response
             response.put("status", Constants.STATUS_SUCCESS);
-            response.put("data", tickets);
+            response.put("data", tickets.getContent()); // Paginated ticket data
+            response.put("totalPages", tickets.getTotalPages()); // Total number of pages
+            response.put("totalElements", tickets.getTotalElements()); // Total number of tickets
 
             return ResponseEntity.ok(response);
         } catch (BookingNotFoundException e) {
@@ -67,7 +83,6 @@ public class TicketController {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
         }
     }
-
     @GetMapping("/search/{userId}/{ticketId}")
     public ResponseEntity<Map<String, Object>> searchTicket(
             @PathVariable long userId,

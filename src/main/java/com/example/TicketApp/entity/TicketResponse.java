@@ -8,7 +8,7 @@ import lombok.NoArgsConstructor;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
-import javax.persistence.*;
+import jakarta.persistence.*;
 import java.time.LocalDateTime;
 
 
@@ -24,12 +24,12 @@ public class TicketResponse {
 
     @ManyToOne
     @JoinColumn(name = "ticket_id", nullable = false)
-    @JsonBackReference  // Prevent recursive serialization
+    @JsonBackReference  // Prevent recursive serialization for ticket side
     private Ticket ticket;
 
     @ManyToOne
     @JoinColumn(name = "user_id", nullable = false)
-    @JsonBackReference  // Prevent recursive serialization
+    @JsonBackReference  // Prevent recursive serialization for user side
     private User user;
 
     @Enumerated(EnumType.STRING)
@@ -44,5 +44,4 @@ public class TicketResponse {
 
     @UpdateTimestamp
     private LocalDateTime updatedAt;
-
 }

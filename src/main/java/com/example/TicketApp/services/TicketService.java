@@ -23,6 +23,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.cache.annotation.CacheEvict;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
@@ -42,7 +45,7 @@ public class TicketService {
     private final BookingRespository bookingRespository;
     private final RedisTemplate<String, Object> redisTemplate;
 
-    // Constructor Injection
+
     public TicketService(UserRespository userRespository, TicketRepository ticketRepository, TicketResponseRepository ticketResponseRepository,
                          BookingRespository bookingRespository, RedisTemplate<String, Object> redisTemplate) {
         this.userRespository = userRespository;
@@ -52,59 +55,84 @@ public class TicketService {
         this.redisTemplate = redisTemplate;
     }
 
-    public Map<String, List<SimpleTicketDTO>> getFilteredTickets(long userId, String role, String status) {
+
+    public Page<SimpleTicketDTO> getFilteredTickets(long userId, String role, String status, Pageable pageable) {
         // Validate user existence
         User user = userRespository.findById(userId)
                 .orElseThrow(() -> new UserNotFoundException("User not found with ID: " + userId));
+
+        // Validate role
+        if (role == null || (!role.equalsIgnoreCase("AGENT") && !role.equalsIgnoreCase("CUSTOMER"))) {
+            throw new IllegalArgumentException("Invalid role. Role must be 'AGENT' or 'CUSTOMER'.");
+        }
 
         List<Ticket> tickets;
 
         // Determine tickets based on role
         if ("AGENT".equalsIgnoreCase(role)) {
             tickets = user.getTicketsAsAgent();
-        } else if ("CUSTOMER".equalsIgnoreCase(role)) {
-            tickets = user.getTicketsAsCustomer();
         } else {
-            throw new IllegalArgumentException("Invalid role. Must be 'AGENT' or 'CUSTOMER'.");
+            tickets = user.getTicketsAsCustomer();
         }
+
+        // Filter tickets based on status (ACTIVE, RESOLVED or ALL)
+        if (status != null && !status.equalsIgnoreCase("ALL") && !status.equalsIgnoreCase("ACTIVE") && !status.equalsIgnoreCase("RESOLVED")) {
+            throw new IllegalArgumentException("Invalid status. Status must be 'ACTIVE', 'RESOLVED', or 'ALL'.");
+        }
+
+        tickets = tickets.stream()
+                .filter(ticket -> "ALL".equalsIgnoreCase(status) || ticket.getStatus().name().equalsIgnoreCase(status))
+                .collect(Collectors.toList());
 
         // Separate tickets into Prebooking and Postbooking
         List<SimpleTicketDTO> prebookingTickets = new ArrayList<>();
         List<SimpleTicketDTO> postbookingTickets = new ArrayList<>();
 
         for (Ticket ticket : tickets) {
-            if (filterTickets(ticket, status)) {
-                SimpleTicketDTO dto = new SimpleTicketDTO(
-                        ticket.getTicketId(),
-                        ticket.getDescription(),
-                        ticket.getStatus().name(),
-                        ticket.getCreatedAt()
-                );
+            SimpleTicketDTO dto = new SimpleTicketDTO(
+                    ticket.getTicketId(),
+                    ticket.getDescription(),
+                    ticket.getStatus().name(),
+                    ticket.getCreatedAt()
+            );
 
-                if (isPreBooking(ticket)) {
-                    prebookingTickets.add(dto);
-                } else {
+            if (ticket.getBooking() == null) {
+                // No booking ID exists, this is a prebooking ticket
+                prebookingTickets.add(dto);
+            } else {
+                // Booking exists, this is a postbooking ticket
+                // Validate if the user corresponds to the booking
+                if (isPostBookingValid(ticket, userId)) {
                     postbookingTickets.add(dto);
+                } else {
+                    throw new IllegalArgumentException("Ticket does not correspond to the provided user and booking.");
                 }
             }
         }
 
-        // Response structure
-        Map<String, List<SimpleTicketDTO>> responseData = new HashMap<>();
-        responseData.put("Prebooking", prebookingTickets);
-        responseData.put("Postbooking", postbookingTickets);
+        // Combine prebooking and postbooking tickets
+        List<SimpleTicketDTO> allTickets = new ArrayList<>();
+        allTickets.addAll(prebookingTickets);
+        allTickets.addAll(postbookingTickets);
 
-        return responseData;
+        // Apply pagination
+        int start = (int) pageable.getOffset();
+        int end = Math.min((start + pageable.getPageSize()), allTickets.size());
+        List<SimpleTicketDTO> paginatedTickets = allTickets.subList(start, end);
+
+        // Create a Page object
+        return new PageImpl<>(paginatedTickets, pageable, allTickets.size());
     }
 
-    // Helper method to filter tickets based on status
-    private boolean filterTickets(Ticket ticket, String status) {
-        return "ALL".equalsIgnoreCase(status) || status.equalsIgnoreCase(ticket.getStatus().name());
-    }
-
-    // Determine if a ticket is prebooking (No booking ID → Prebooking, Booking exists → Postbooking)
-    private boolean isPreBooking(Ticket ticket) {
-        return ticket.getBooking() == null;
+    // Helper method to validate postbooking status
+    private boolean isPostBookingValid(Ticket ticket, long userId) {
+        // Validate if the user is either the customer or agent for the given booking
+        if (ticket.getBooking() != null) {
+            Booking booking = ticket.getBooking();
+            // The user should either be the customer or an agent for the given booking
+            return (booking.getUser().getUserId() == userId);
+        }
+        return false;
     }
 
     public Map<String, Long> getCountActiveResolved(long userId, String role, String category) {
@@ -150,6 +178,7 @@ public class TicketService {
 
         return counts;
     }
+
 
 //    // Clear cache when tickets are updated
 //    @CacheEvict(value = "ticket_counts", allEntries = true)

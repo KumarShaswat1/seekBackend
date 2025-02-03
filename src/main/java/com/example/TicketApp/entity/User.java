@@ -8,7 +8,7 @@ import lombok.NoArgsConstructor;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
-import javax.persistence.*;
+import jakarta.persistence.*;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -19,7 +19,7 @@ import java.util.Set;
 @Table(name = "users")
 @Data
 @NoArgsConstructor
-@JsonIgnoreProperties({"agents", "customers"})
+@JsonIgnoreProperties({"agents", "customers"})  // Ignore unnecessary fields during serialization
 public class User {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -55,19 +55,18 @@ public class User {
     private Set<User> customers = new HashSet<>();
 
     @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
-    @JsonManagedReference
+    @JsonManagedReference  // Proper serialization for bookings
     private List<Booking> bookings = new ArrayList<>();
 
     @OneToMany(mappedBy = "customer", cascade = CascadeType.ALL, orphanRemoval = true)
-    @JsonManagedReference
+    @JsonManagedReference  // Proper serialization for tickets as customer
     private List<Ticket> ticketsAsCustomer = new ArrayList<>();
 
     @OneToMany(mappedBy = "agent", cascade = CascadeType.ALL, orphanRemoval = true)
-    @JsonManagedReference
+    @JsonManagedReference  // Proper serialization for tickets as agent
     private List<Ticket> ticketsAsAgent = new ArrayList<>();
 
     @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
-    @JsonManagedReference
+    @JsonManagedReference  // Proper serialization for ticket responses
     private List<TicketResponse> ticketResponses = new ArrayList<>();
-
 }

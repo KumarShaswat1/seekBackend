@@ -12,6 +12,7 @@ import com.example.TicketApp.repository.UserRespository;
 import com.example.TicketApp.CustomErrors.BookingNotFoundException;
 import com.example.TicketApp.CustomErrors.UserNotAuthorizedException;
 import com.example.TicketApp.CustomErrors.UserNotFoundException;
+import com.example.TicketApp.CustomErrors.UnauthorizedAccessException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -34,7 +35,7 @@ public class TicketResponseService {
         this.userRespository = userRespository;
     }
 
-    public TicketResponseDTO createTicketReply(long ticketId, long userId, String role, Map<String, Object> replyData) {
+    public TicketResponseDTO createTicketReply(long ticketId, long userId, String role, Map<String, Object> replyData) throws UnauthorizedAccessException {
         // Validate role
         validateRole(role);
 
@@ -54,6 +55,12 @@ public class TicketResponseService {
 
         // Validate user's authorization for the role
         validateAuthorization(ticket, user, role);
+
+        // Check if the role matches the allowed roles for the user in the context of the ticket
+        if (!isValidRoleForTicket(ticket, user, role)) {
+            logger.error("User with ID: {} is not authorized to reply with role: {}", userId, role);
+            throw new UnauthorizedAccessException("User is not authorized to reply with the specified role.");
+        }
 
         // Create and save the TicketResponse entity
         TicketResponse ticketResponse = new TicketResponse();
@@ -102,6 +109,18 @@ public class TicketResponseService {
                 savedResponse.getCreatedAt() // Response time
         );
     }
+
+    // New helper method to validate the role based on the ticket context and user
+    private boolean isValidRoleForTicket(Ticket ticket, User user, String role) {
+        // Example validation logic for role
+        if (role.equalsIgnoreCase("AGENT")) {
+            return user.equals(ticket.getAgent()); // Only the assigned agent can reply as AGENT
+        } else if (role.equalsIgnoreCase("CUSTOMER")) {
+            return user.equals(ticket.getCustomer()); // Only the assigned customer can reply as CUSTOMER
+        }
+        return false; // Invalid role
+    }
+
 
     // Update a ticket response
     public TicketResponse updateTicketResponse(long userId, long ticketId, long responseId, String updateText) {
