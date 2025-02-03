@@ -154,13 +154,15 @@ public class TicketController {
         Map<String, Object> response = new HashMap<>();
         try {
             logger.info("Creating ticket for userId: {} with bookingId: {}", request.getUserId(), request.getBookingId());
+
             Ticket createdTicket = ticketService.createTicket(
                     request.getUserId(),
                     request.getBookingId(),
                     request.getDescription(),
                     request.getRole()
             );
-            response.put("status", Constants.STATUS_SUCCESS);
+
+            response.put("status", "success");
             Map<String, Object> data = new HashMap<>();
             data.put("ticketId", createdTicket.getTicketId());
             data.put("message", "Ticket created successfully");
@@ -170,29 +172,29 @@ public class TicketController {
 
         } catch (UserNotFoundException e) {
             logger.error("User not found: {}", e.getMessage());
-            response.put("status", Constants.STATUS_ERROR);
+            response.put("status", "error");
             response.put("message", e.getMessage());
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);  // 404 Not Found
-        } catch (IllegalArgumentException e) {
-            logger.error("Invalid argument: {}", e.getMessage());
-            response.put("status", Constants.STATUS_ERROR);
-            response.put("message", e.getMessage());
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);  // 400 Bad Request
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
         } catch (BookingNotFoundException e) {
-            logger.error("Booking not found: {}", e.getMessage());
-            response.put("status", Constants.STATUS_ERROR);
+            logger.error("Invalid booking: {}", e.getMessage());
+            response.put("status", "error");
             response.put("message", "Invalid booking id.");
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);  // 404 Not Found
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
         } catch (UserNotAuthorizedException e) {
-            logger.error("User not authorized: {}", e.getMessage());
-            response.put("status", Constants.STATUS_ERROR);
+            logger.error("Unauthorized access: {}", e.getMessage());
+            response.put("status", "error");
             response.put("message", e.getMessage());
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(response);  // 403 Forbidden
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(response);
+        } catch (IllegalArgumentException e) {
+            logger.error("Bad request: {}", e.getMessage());
+            response.put("status", "error");
+            response.put("message", e.getMessage());
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
         } catch (Exception e) {
             logger.error("Internal server error: {}", e.getMessage());
-            response.put("status", Constants.STATUS_ERROR);
-            response.put("message", Constants.MESSAGE_INTERNAL_SERVER_ERROR);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);  // 500 Internal Server Error
+            response.put("status", "error");
+            response.put("message", "Internal server error");
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
         }
     }
 }

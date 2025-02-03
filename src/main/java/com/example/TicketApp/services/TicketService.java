@@ -22,7 +22,7 @@ import com.example.TicketApp.repository.UserRespository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.cache.annotation.CacheEvict;
-import org.springframework.data.domain.*;
+
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
@@ -36,7 +36,6 @@ public class TicketService {
 
     private static final Logger logger = LoggerFactory.getLogger(TicketService.class);
 
-    public static long count=0;
     private final UserRespository userRespository;
     private final TicketRepository ticketRepository;
     private final TicketResponseRepository ticketResponseRepository;
@@ -152,11 +151,11 @@ public class TicketService {
         return counts;
     }
 
-    // Clear cache when tickets are updated
-    @CacheEvict(value = "ticket_counts", allEntries = true)
-    public void clearTicketCountsCache() {
-        // Intentionally blank - annotation does the work
-    }
+//    // Clear cache when tickets are updated
+//    @CacheEvict(value = "ticket_counts", allEntries = true)
+//    public void clearTicketCountsCache() {
+//
+//    }
 
     public TicketDTO searchTicket(long userId, long ticketId, int page, int size) {
         // Validate and retrieve the user
@@ -238,58 +237,53 @@ public class TicketService {
         return repliesDTO;
     }
 
-    public Ticket createTicket(long userId, String bookingId, String description, String role) {
+    public Ticket createTicket(long userId, Long bookingId, String description, String role) {
         logger.info("Creating ticket for userId: " + userId + " with bookingId: " + bookingId);
 
-        // Validate user existence
         User user = userRespository.findById(userId)
                 .orElseThrow(() -> new UserNotFoundException("User not found with ID: " + userId));
 
-        // Ensure only CUSTOMER can create a ticket
         if (!role.equalsIgnoreCase("CUSTOMER")) {
             throw new UserNotAuthorizedException("Only customers can create tickets.");
         }
 
-        // Validate booking ID
-        Booking booking = bookingRespository.findById(Long.parseLong(bookingId))
-                .orElseThrow(() -> new BookingNotFoundException("Booking not found with ID: " + bookingId));
-
-        // Ensure user is associated with the booking
-        if (!booking.getUser().getUserId().equals(user.getUserId())) {
-            throw new UserNotAuthorizedException("User is not authorized to access this booking.");
-        }
-
-        // Create ticket
         Ticket ticket = new Ticket();
         ticket.setCustomer(user);
-        ticket.setBooking(booking);
         ticket.setDescription(description);
         ticket.setStatus(Status.ACTIVE);
         ticket.setCreatedAt(LocalDateTime.now());
 
-        // Assign an agent
+        if (bookingId == null) {
+            // Prebooking Ticket (No Booking ID)
+            ticket.setCategory(Category.PREBOOKING);
+            ticket.setBooking(null);
+        } else {
+            // Postbooking Ticket (Booking ID Provided)
+            Booking booking = bookingRespository.findById(bookingId)
+                    .orElseThrow(() -> new BookingNotFoundException("Invalid booking id: " + bookingId));
+
+            if (!booking.getUser().getUserId().equals(user.getUserId())) {
+                throw new UserNotAuthorizedException("User is not authorized to access this booking.");
+            }
+
+            ticket.setCategory(Category.POSTBOOKING);
+            ticket.setBooking(booking);
+        }
+
         User agent = assignAgentToTicket();
         ticket.setAgent(agent);
 
-        logger.info("Ticket created successfully with ID: " + ticket.getTicketId());
+        Ticket savedTicket = ticketRepository.save(ticket);
+        logger.info("Ticket created successfully with ID: " + savedTicket.getTicketId());
 
-        // Save and return ticket
-        return ticketRepository.save(ticket);
+        return savedTicket;
     }
 
     private User assignAgentToTicket() {
-        // Find agents with the role AGENT
         List<User> agents = userRespository.findByRole(Role.AGENT);
-
         if (agents.isEmpty()) {
-            logger.error("No available agents for ticket assignment");
             throw new IllegalStateException("No available agents for ticket assignment");
         }
-
-        // Round-robin agent selection
-
-        User assignedAgent = agents.get((int) (count++ % agents.size()));
-        logger.info("Assigned agent: " + assignedAgent.getEmail());
-        return assignedAgent;
+        return agents.get(new Random().nextInt(agents.size()));
     }
 }
