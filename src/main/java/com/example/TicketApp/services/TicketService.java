@@ -23,6 +23,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.cache.annotation.CacheEvict;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
@@ -53,7 +56,7 @@ public class TicketService {
     }
 
 
-    public Map<String, List<SimpleTicketDTO>> getFilteredTickets(long userId, String role, String status) {
+    public Page<SimpleTicketDTO> getFilteredTickets(long userId, String role, String status, Pageable pageable) {
         // Validate user existence
         User user = userRespository.findById(userId)
                 .orElseThrow(() -> new UserNotFoundException("User not found with ID: " + userId));
@@ -107,12 +110,18 @@ public class TicketService {
             }
         }
 
-        // Response structure
-        Map<String, List<SimpleTicketDTO>> responseData = new HashMap<>();
-        responseData.put("Prebooking", prebookingTickets);
-        responseData.put("Postbooking", postbookingTickets);
+        // Combine prebooking and postbooking tickets
+        List<SimpleTicketDTO> allTickets = new ArrayList<>();
+        allTickets.addAll(prebookingTickets);
+        allTickets.addAll(postbookingTickets);
 
-        return responseData;
+        // Apply pagination
+        int start = (int) pageable.getOffset();
+        int end = Math.min((start + pageable.getPageSize()), allTickets.size());
+        List<SimpleTicketDTO> paginatedTickets = allTickets.subList(start, end);
+
+        // Create a Page object
+        return new PageImpl<>(paginatedTickets, pageable, allTickets.size());
     }
 
     // Helper method to validate postbooking status
@@ -121,12 +130,10 @@ public class TicketService {
         if (ticket.getBooking() != null) {
             Booking booking = ticket.getBooking();
             // The user should either be the customer or an agent for the given booking
-            return (booking.getUser().getUserId() == userId );
+            return (booking.getUser().getUserId() == userId);
         }
         return false;
     }
-
-
 
     public Map<String, Long> getCountActiveResolved(long userId, String role, String category) {
         // Validate role
@@ -144,12 +151,15 @@ public class TicketService {
         }
 
         // Cache miss - compute fresh result
-        List<Ticket> tickets;
-        if ("AGENT".equalsIgnoreCase(role)) {
-            tickets = ticketRepository.findByAgentIdAndCategory(userId, category);
-        } else {
-            tickets = ticketRepository.findByCustomerIdAndCategory(userId, category);
-        }
+        List<Ticket> tickets = ticketRepository.findAll().stream()
+                .filter(ticket -> {
+                    if (role.equalsIgnoreCase("AGENT")) {
+                        return ticket.getAgent() != null && ticket.getAgent().getUserId() == userId;
+                    } else {
+                        return ticket.getCustomer() != null && ticket.getCustomer().getUserId() == userId;
+                    }
+                })
+                .collect(Collectors.toList());
 
         long activeCount = tickets.stream()
                 .filter(ticket -> ticket.getStatus() == Status.ACTIVE)
