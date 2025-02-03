@@ -39,12 +39,12 @@ public class TicketController {
     public ResponseEntity<?> searchTickets(
             @RequestParam long user_id,
             @RequestParam String role,
-            @RequestParam(required = false, defaultValue = Constants.STATUS_ALL) String ticket_status) {
+            @RequestParam String status) {
 
         Map<String, Object> response = new HashMap<>();
         try {
-            logger.info("Searching tickets for userId: {}, role: {}, status: {}", user_id, role, ticket_status);
-            Map<String, List<SimpleTicketDTO>> tickets = ticketService.getFilteredTickets(user_id, role, ticket_status);
+            logger.info("Searching tickets for userId: {}, role: {}, status: {}", user_id, role, status);
+            Map<String, List<SimpleTicketDTO>> tickets = ticketService.getFilteredTickets(user_id, role, status);
 
             response.put("status", Constants.STATUS_SUCCESS);
             response.put("data", tickets);

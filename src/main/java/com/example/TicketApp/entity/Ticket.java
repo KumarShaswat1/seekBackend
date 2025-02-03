@@ -30,12 +30,12 @@ public class Ticket {
 
     @ManyToOne
     @JoinColumn(name = "customer_id", nullable = false)
-    @JsonManagedReference  // Proper serialization
+    @JsonManagedReference  // Proper serialization for the "customer" side
     private User customer;
 
     @ManyToOne
     @JoinColumn(name = "agent_id")
-    @JsonManagedReference  // Proper serialization
+    @JsonManagedReference  // Proper serialization for the "agent" side
     private User agent;
 
     @Enumerated(EnumType.STRING)
@@ -62,10 +62,6 @@ public class Ticket {
     private LocalDateTime resolvedAt;
 
     @OneToMany(mappedBy = "ticket", cascade = CascadeType.ALL, orphanRemoval = true)
-    @JsonManagedReference  // Proper serialization
+    @JsonManagedReference  // Proper serialization for ticket responses
     private List<TicketResponse> responses = new ArrayList<>();
-
-
-
-
 }
