@@ -107,13 +107,7 @@ public class TicketService {
                 // No booking ID exists, this is a prebooking ticket
                 prebookingTickets.add(dto);
             } else {
-                // Booking exists, this is a postbooking ticket
-                // Validate if the user corresponds to the booking
-                if (isPostBookingValid(ticket, userId)) {
-                    postbookingTickets.add(dto);
-                } else {
-                    throw new IllegalArgumentException("Ticket does not correspond to the provided user and booking.");
-                }
+                postbookingTickets.add(dto);
             }
         }
 
