@@ -54,35 +54,34 @@ public class TicketController {
                     user_id, role, status, page, size);
 
             // Create a Pageable object for pagination
-            Pageable pageable = (Pageable) PageRequest.of(page, size);
+            Pageable pageable = PageRequest.of(page, size);
 
-            // Get paginated results from the service layer
-            Page<SimpleTicketDTO> tickets = ticketService.getFilteredTickets(user_id, role, status, pageable);
+            // Get filtered tickets with Prebooking and Postbooking separation
+            Map<String, List<SimpleTicketDTO>> tickets = ticketService.getFilteredTickets(user_id, role, status, pageable);
 
-            // Prepare response
-            response.put("status", Constants.STATUS_SUCCESS);
-            response.put("data", tickets.getContent()); // Paginated ticket data
-            response.put("totalPages", tickets.getTotalPages()); // Total number of pages
-            response.put("totalElements", tickets.getTotalElements()); // Total number of tickets
+            // Prepare the response with the required structure
+            response.put("status", "success");
+            response.put("data", tickets);  // The map with PrebookingTickets and PostbookingTickets
 
             return ResponseEntity.ok(response);
         } catch (BookingNotFoundException e) {
             logger.error("Booking not found: {}", e.getMessage());
-            response.put("status", Constants.STATUS_ERROR);
+            response.put("status", "error");
             response.put("message", e.getMessage());
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
         } catch (IllegalArgumentException e) {
             logger.error("Invalid argument: {}", e.getMessage());
-            response.put("status", Constants.STATUS_ERROR);
+            response.put("status", "error");
             response.put("message", e.getMessage());
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
         } catch (Exception e) {
-            logger.error("Internal server error: {}", e.getMessage());
-            response.put("status", Constants.STATUS_ERROR);
-            response.put("message", Constants.MESSAGE_INTERNAL_SERVER_ERROR);
+            logger.error("Internal server error: {}", e.getMessage(), e); // Include the full stack trace
+            response.put("status", "error");
+            response.put("message", "Internal server error");
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
         }
     }
+
     @GetMapping("/search/{userId}/{ticketId}")
     public ResponseEntity<Map<String, Object>> searchTicket(
             @PathVariable long userId,

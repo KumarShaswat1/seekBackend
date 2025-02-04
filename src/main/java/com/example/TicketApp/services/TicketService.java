@@ -56,7 +56,7 @@ public class TicketService {
     }
 
 
-    public Page<SimpleTicketDTO> getFilteredTickets(long userId, String role, String status, Pageable pageable) {
+    public Map<String, List<SimpleTicketDTO>> getFilteredTickets(long userId, String role, String status, Pageable pageable) {
         // Validate user existence
         User user = userRespository.findById(userId)
                 .orElseThrow(() -> new UserNotFoundException("User not found with ID: " + userId));
@@ -110,30 +110,46 @@ public class TicketService {
             }
         }
 
-        // Combine prebooking and postbooking tickets
-        List<SimpleTicketDTO> allTickets = new ArrayList<>();
-        allTickets.addAll(prebookingTickets);
-        allTickets.addAll(postbookingTickets);
+        // Apply pagination to Prebooking and Postbooking Tickets
+        List<SimpleTicketDTO> paginatedPrebookingTickets = paginate(prebookingTickets, pageable);
+        List<SimpleTicketDTO> paginatedPostbookingTickets = paginate(postbookingTickets, pageable);
 
-        // Apply pagination
-        int start = (int) pageable.getOffset();
-        int end = Math.min((start + pageable.getPageSize()), allTickets.size());
-        List<SimpleTicketDTO> paginatedTickets = allTickets.subList(start, end);
+        // Create a map to hold prebooking and postbooking tickets
+        Map<String, List<SimpleTicketDTO>> result = new HashMap<>();
+        result.put("PrebookingTickets", paginatedPrebookingTickets);
+        result.put("PostbookingTickets", paginatedPostbookingTickets);
 
-        // Create a Page object
-        return new PageImpl<>(paginatedTickets, pageable, allTickets.size());
+        return result;
     }
+
+    // Helper method for pagination
+    private List<SimpleTicketDTO> paginate(List<SimpleTicketDTO> tickets, Pageable pageable) {
+        int start = (int) pageable.getOffset();
+        int end = Math.min(start + pageable.getPageSize(), tickets.size());
+
+        // Ensure no negative indices
+        if (start >= tickets.size()) {
+            return Collections.emptyList();  // Return empty if offset exceeds ticket size
+        }
+
+        // Handle cases where subList could go out of bounds
+        if (end > tickets.size()) {
+            end = tickets.size();
+        }
+
+        return tickets.subList(start, end);
+    }
+
 
     // Helper method to validate postbooking status
     private boolean isPostBookingValid(Ticket ticket, long userId) {
-        // Validate if the user is either the customer or agent for the given booking
-        if (ticket.getBooking() != null) {
+        if (ticket.getBooking() != null && ticket.getBooking().getUser() != null) {
             Booking booking = ticket.getBooking();
-            // The user should either be the customer or an agent for the given booking
             return (booking.getUser().getUserId() == userId);
         }
         return false;
     }
+
 
     public Map<String, Long> getCountActiveResolved(long userId, String role, String category) {
         // Validate role
