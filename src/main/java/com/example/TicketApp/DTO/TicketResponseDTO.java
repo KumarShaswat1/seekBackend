@@ -1,10 +1,6 @@
 package com.example.TicketApp.DTO;
 
-import lombok.Builder;
-import lombok.NoArgsConstructor;
-
 import java.time.LocalDateTime;
-import java.util.List;
 
 
 import lombok.AllArgsConstructor;

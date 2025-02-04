@@ -217,7 +217,15 @@ public class TicketService {
             throw new UserNotAuthorizedException("User ID " + userId + " is not authorized to view ticket ID " + ticketId);
         }
 
-        // Split ticket responses into prebooking and postbooking (but merge them later)
+        // Map the ticket fields into the response
+        Map<String, Object> ticketDetails = new HashMap<>();
+        ticketDetails.put("ticketId", ticket.getTicketId());
+        ticketDetails.put("status", ticket.getStatus());
+        ticketDetails.put("category", ticket.getCategory());
+        ticketDetails.put("time", ticket.getCreatedAt());  // Assuming 'createdAt' is the 'time' you're referring to
+        ticketDetails.put("description", ticket.getDescription());  // Assuming 'description' is a field in the Ticket
+
+        // Split ticket responses into prebooking and postbooking (merged later)
         List<TicketResponse> mergedResponses = new ArrayList<>();
 
         if (ticket.getResponses() != null) {
@@ -236,14 +244,12 @@ public class TicketService {
         // Paginate the merged responses
         List<TicketResponseDTO> mergedDTOs = paginateAndMapResponses(mergedResponses, page, size, ticket, user);
 
-        // Prepare the response map
-        responseMap.put("status", "success");
-        responseMap.put("data", new HashMap<String, Object>() {{
-            put("MergedTickets", mergedDTOs); // combined prebooking and postbooking responses
-        }});
+        // Add ticket details and responses to the response map
+        ticketDetails.put("responses", mergedDTOs);
 
-        return responseMap;
+        return ticketDetails;
     }
+
 
     private List<TicketResponseDTO> paginateAndMapResponses(List<TicketResponse> responses, int page, int size, Ticket ticket, User user) {
         // Handle pagination logic

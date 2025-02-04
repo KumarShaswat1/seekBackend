@@ -94,12 +94,14 @@ public class TicketController {
         try {
             logger.info("Fetching ticket details for userId: {}, ticketId: {}, page: {}, size: {}", userId, ticketId, page, size);
 
-            // Directly return the response from service without casting
+            // Call the service to fetch ticket details without adding status/data
             Map<String, Object> ticketResponse = ticketService.searchTicket(userId, ticketId, page, size);
 
+            // Add status and data only in the controller
             response.put("status", Constants.STATUS_SUCCESS);
-            response.put("data", ticketResponse);
-            return ResponseEntity.ok(response);
+            response.put("data", ticketResponse);  // Ticket data from service is added here
+
+            return ResponseEntity.ok(response);  // Return the response
 
         } catch (IllegalArgumentException e) {
             logger.error("Invalid argument: {}", e.getMessage());
@@ -113,6 +115,7 @@ public class TicketController {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
         }
     }
+
 
     @GetMapping("/{ticket-id}/response")
     public ResponseEntity<?> getAllTicketResponses(@PathVariable("ticket-id") long ticketId,
