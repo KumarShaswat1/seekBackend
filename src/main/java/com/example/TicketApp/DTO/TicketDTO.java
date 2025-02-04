@@ -2,6 +2,7 @@ package com.example.TicketApp.DTO;
 
 import com.example.TicketApp.entity.Ticket;
 import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Data;
 
 import java.time.LocalDateTime;

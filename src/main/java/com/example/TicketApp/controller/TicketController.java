@@ -187,5 +187,38 @@ public class TicketController {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
         }
     }
+
+    @GetMapping("/count/search")
+    public ResponseEntity<Map<String, Object>> getTicketCount(
+            @RequestParam long userId,
+            @RequestParam String role,
+            @RequestParam String category) {
+
+        Map<String, Object> response = new HashMap<>();
+
+        try {
+            // Fetch ticket count from the service layer
+            Map<String, Long> count = ticketService.getCountActiveResolved(userId, role, category);
+
+            // Populate the response for successful execution
+            response.put("status", "success");
+            response.put("data", count);
+
+            return ResponseEntity.ok(response);
+        } catch (IllegalArgumentException e) {
+            // Handle case when invalid parameters are provided
+            response.put("status", "error");
+            response.put("message", e.getMessage());
+
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+        } catch (Exception e) {
+            // Handle unexpected server errors
+            response.put("status", "error");
+            response.put("message", "Internal server error");
+
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+        }
+    }
+
 }
 

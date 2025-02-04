@@ -1,6 +1,7 @@
 package com.example.TicketApp.DTO;
 
 
+import lombok.Builder;
 import lombok.Data;
 
 import java.time.LocalDateTime;
