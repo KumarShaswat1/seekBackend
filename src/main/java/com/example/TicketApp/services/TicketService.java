@@ -158,7 +158,7 @@ public class TicketService {
             throw new IllegalArgumentException("Invalid role. Role must be 'AGENT' or 'CUSTOMER'.");
         }
 
-        // Generate cache key
+        // Generate cache key (including category)
         String cacheKey = Constants.CACHE_KEY_PREFIX + userId + "::" + role.toUpperCase() + "::" + category;
 
         // Try to get cached result
@@ -170,11 +170,14 @@ public class TicketService {
         // Cache miss - compute fresh result
         List<Ticket> tickets = ticketRepository.findAll().stream()
                 .filter(ticket -> {
-                    if (role.equalsIgnoreCase("AGENT")) {
-                        return ticket.getAgent() != null && ticket.getAgent().getUserId() == userId;
-                    } else {
-                        return ticket.getCustomer() != null && ticket.getCustomer().getUserId() == userId;
-                    }
+                    // Filter by userId and role
+                    boolean isUserMatch = (role.equalsIgnoreCase("AGENT") && ticket.getAgent() != null && ticket.getAgent().getUserId() == userId) ||
+                            (role.equalsIgnoreCase("CUSTOMER") && ticket.getCustomer() != null && ticket.getCustomer().getUserId() == userId);
+
+                    // Filter by category
+                    boolean isCategoryMatch = category != null && category.equalsIgnoreCase(String.valueOf(ticket.getCategory()));
+
+                    return isUserMatch && isCategoryMatch;
                 })
                 .collect(Collectors.toList());
 
@@ -195,6 +198,7 @@ public class TicketService {
 
         return counts;
     }
+
 
 
 
