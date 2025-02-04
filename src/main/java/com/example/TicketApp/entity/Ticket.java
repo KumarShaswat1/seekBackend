@@ -30,12 +30,12 @@ public class Ticket {
 
     @ManyToOne
     @JoinColumn(name = "customer_id", nullable = false)
-    @JsonManagedReference  // Proper serialization for the "customer" side
+    @JsonBackReference  // Prevent recursion by not serializing the customer side
     private User customer;
 
     @ManyToOne
     @JoinColumn(name = "agent_id")
-    @JsonManagedReference  // Proper serialization for the "agent" side
+    @JsonBackReference  // Prevent recursion by not serializing the agent side
     private User agent;
 
     @Enumerated(EnumType.STRING)

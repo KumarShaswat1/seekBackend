@@ -89,11 +89,18 @@ public class TicketService {
         List<SimpleTicketDTO> postbookingTickets = new ArrayList<>();
 
         for (Ticket ticket : tickets) {
+            // Get Customer and Agent emails
+            String customerEmail = ticket.getCustomer() != null ? ticket.getCustomer().getEmail() : "No Email";
+            String agentEmail = ticket.getAgent() != null ? ticket.getAgent().getEmail() : "No Email";
+
+            // Create DTO with email addresses included
             SimpleTicketDTO dto = new SimpleTicketDTO(
                     ticket.getTicketId(),
                     ticket.getDescription(),
                     ticket.getStatus().name(),
-                    ticket.getCreatedAt()
+                    ticket.getCreatedAt(),
+                    customerEmail,
+                    agentEmail
             );
 
             if (ticket.getBooking() == null) {
@@ -196,13 +203,10 @@ public class TicketService {
     }
 
 
-//    // Clear cache when tickets are updated
-//    @CacheEvict(value = "ticket_counts", allEntries = true)
-//    public void clearTicketCountsCache() {
-//
-//    }
 
-    public TicketDTO searchTicket(long userId, long ticketId, int page, int size) {
+    public Map<String, Object> searchTicket(long userId, long ticketId, int page, int size) {
+        Map<String, Object> responseMap = new HashMap<>();
+
         // Validate and retrieve the user
         User user = userRespository.findById(userId)
                 .orElseThrow(() -> new UserNotFoundException("User not found with ID: " + userId));
@@ -211,51 +215,90 @@ public class TicketService {
         Ticket ticket = ticketRepository.findById(ticketId)
                 .orElseThrow(() -> new BookingNotFoundException("Ticket not found with ID: " + ticketId));
 
-        // Validate ticket ownership or association
+        // Validate ticket ownership or association (Customer or Agent)
         if (!ticket.getCustomer().equals(user) && (ticket.getAgent() == null || !ticket.getAgent().equals(user))) {
             throw new UserNotAuthorizedException("User ID " + userId + " is not authorized to view ticket ID " + ticketId);
         }
 
-        // Get responses and paginate them
-        List<TicketResponse> responses = Optional.ofNullable(ticket.getResponses())
-                .orElse(Collections.emptyList());
+        // Split ticket responses into prebooking and postbooking
+        List<TicketResponse> prebookingResponses = new ArrayList<>();
+        List<TicketResponse> postbookingResponses = new ArrayList<>();
 
-        // Handle case where the requested page exceeds available data
-        if (page < 0 || size <= 0 || page * size >= responses.size()) {
-            return new TicketDTO(ticket.getTicketId(), ticket.getDescription(), ticket.getStatus().name(),
-                    ticket.getCategory().name(), ticket.getCreatedAt(), ticket.getUpdatedAt(), Collections.emptyList());
+        if (ticket.getResponses() != null) {
+            for (TicketResponse response : ticket.getResponses()) {
+                if (ticket.getBooking() == null) {
+                    // No booking, this is a prebooking response
+                    prebookingResponses.add(response);
+                } else {
+                    // There is a booking, this is a postbooking response
+                    postbookingResponses.add(response);
+                }
+            }
+        } else {
+            logger.warn("Ticket ID {} has no responses", ticketId);
         }
 
-        // Paginate responses
+        // Paginate the responses
+        List<TicketResponseDTO> prebookingDTOs = paginateAndMapResponses(prebookingResponses, page, size, ticket, user);
+        List<TicketResponseDTO> postbookingDTOs = paginateAndMapResponses(postbookingResponses, page, size, ticket, user);
+
+        // Prepare the response map
+        responseMap.put("status", "success");
+        responseMap.put("data", new HashMap<String, Object>() {{
+            put("PrebookingTickets", prebookingDTOs);
+            put("PostbookingTickets", postbookingDTOs);
+        }});
+
+        return responseMap;
+    }
+
+
+    private List<TicketResponseDTO> paginateAndMapResponses(List<TicketResponse> responses, int page, int size, Ticket ticket, User user) {
+        // Handle pagination logic
+        if (page < 0 || size <= 0 || page * size >= responses.size()) {
+            return Collections.emptyList(); // Return an empty list if the page/size is invalid
+        }
+
         int start = page * size;
         int end = Math.min(start + size, responses.size());
         List<TicketResponse> paginatedResponses = responses.subList(start, end);
 
-        // Map TicketResponses to TicketResponseDTOs
+        // Map the paginated responses to DTOs
         List<TicketResponseDTO> responseDTOs = new ArrayList<>();
         for (TicketResponse response : paginatedResponses) {
+            String userEmail;
+            String agentEmail;
+
+            // For CUSTOMER: userEmail is the customer's email, and agentEmail is the agent's email
+            // For AGENT: userEmail is the agent's email, and agentEmail is the customer's email
+            if (user.getRole() == null || user.getRole() == Role.CUSTOMER) {
+                userEmail = ticket.getCustomer() != null ? ticket.getCustomer().getEmail() : "No Email";
+                agentEmail = ticket.getAgent() != null ? ticket.getAgent().getEmail() : "No Email";
+            } else if (user.getRole() == Role.AGENT) {
+                userEmail = ticket.getAgent() != null ? ticket.getAgent().getEmail() : "No Email";
+                agentEmail = ticket.getCustomer() != null ? ticket.getCustomer().getEmail() : "No Email";
+            } else {
+                // Default case if the role is null or unrecognized
+                userEmail = "No Email";
+                agentEmail = "No Email";
+            }
+
+            // Add the response to DTO list
             responseDTOs.add(new TicketResponseDTO(
                     response.getResponseId(),
                     ticket.getTicketId(),
                     response.getResponseText(),
                     response.getRole() != null ? response.getRole().toString() : "UNKNOWN",
-                    response.getUser() != null ? response.getUser().getEmail() : "No Email",
-                    ticket.getAgent() != null ? ticket.getAgent().getEmail() : ticket.getCustomer().getEmail(),
+                    userEmail,        // from
+                    agentEmail,       // to
                     response.getCreatedAt()
             ));
         }
 
-        // Return the ticket DTO with paginated responses
-        return new TicketDTO(
-                ticket.getTicketId(),
-                ticket.getDescription(),
-                ticket.getStatus().name(),
-                ticket.getCategory().name(),
-                ticket.getCreatedAt(),
-                ticket.getUpdatedAt(),
-                responseDTOs
-        );
+        return responseDTOs;
     }
+
+
 
     public List<TicketResponseDTO> getAllTicketResponses(long userId, long ticketId) {
         Ticket ticket = ticketRepository.findById(ticketId)
