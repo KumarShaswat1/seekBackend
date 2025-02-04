@@ -201,7 +201,6 @@ public class TicketService {
 
 
 
-
     public Map<String, Object> searchTicket(long userId, long ticketId, int page, int size) {
         Map<String, Object> responseMap = new HashMap<>();
 
@@ -218,38 +217,33 @@ public class TicketService {
             throw new UserNotAuthorizedException("User ID " + userId + " is not authorized to view ticket ID " + ticketId);
         }
 
-        // Split ticket responses into prebooking and postbooking
-        List<TicketResponse> prebookingResponses = new ArrayList<>();
-        List<TicketResponse> postbookingResponses = new ArrayList<>();
+        // Split ticket responses into prebooking and postbooking (but merge them later)
+        List<TicketResponse> mergedResponses = new ArrayList<>();
 
         if (ticket.getResponses() != null) {
             for (TicketResponse response : ticket.getResponses()) {
+                // If there is no booking, consider it a prebooking response, otherwise it's a postbooking response
                 if (ticket.getBooking() == null) {
-                    // No booking, this is a prebooking response
-                    prebookingResponses.add(response);
+                    mergedResponses.add(response); // prebooking response
                 } else {
-                    // There is a booking, this is a postbooking response
-                    postbookingResponses.add(response);
+                    mergedResponses.add(response); // postbooking response
                 }
             }
         } else {
             logger.warn("Ticket ID {} has no responses", ticketId);
         }
 
-        // Paginate the responses
-        List<TicketResponseDTO> prebookingDTOs = paginateAndMapResponses(prebookingResponses, page, size, ticket, user);
-        List<TicketResponseDTO> postbookingDTOs = paginateAndMapResponses(postbookingResponses, page, size, ticket, user);
+        // Paginate the merged responses
+        List<TicketResponseDTO> mergedDTOs = paginateAndMapResponses(mergedResponses, page, size, ticket, user);
 
         // Prepare the response map
         responseMap.put("status", "success");
         responseMap.put("data", new HashMap<String, Object>() {{
-            put("PrebookingTickets", prebookingDTOs);
-            put("PostbookingTickets", postbookingDTOs);
+            put("MergedTickets", mergedDTOs); // combined prebooking and postbooking responses
         }});
 
         return responseMap;
     }
-
 
     private List<TicketResponseDTO> paginateAndMapResponses(List<TicketResponse> responses, int page, int size, Ticket ticket, User user) {
         // Handle pagination logic
