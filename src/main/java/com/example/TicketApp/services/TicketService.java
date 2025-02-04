@@ -175,7 +175,7 @@ public class TicketService {
                             (role.equalsIgnoreCase("CUSTOMER") && ticket.getCustomer() != null && ticket.getCustomer().getUserId() == userId);
 
                     // Filter by category
-                    boolean isCategoryMatch = category != null && category.equalsIgnoreCase(String.valueOf(ticket.getCategory()));
+                    boolean isCategoryMatch = category != null  &&  category.equalsIgnoreCase("ALL") || category.equalsIgnoreCase(String.valueOf(ticket.getCategory()));
 
                     return isUserMatch && isCategoryMatch;
                 })
