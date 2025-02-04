@@ -93,9 +93,12 @@ public class TicketController {
 
         try {
             logger.info("Fetching ticket details for userId: {}, ticketId: {}, page: {}, size: {}", userId, ticketId, page, size);
-            TicketDTO ticketDTO = ticketService.searchTicket(userId, ticketId, page, size);
+
+            // Directly return the response from service without casting
+            Map<String, Object> ticketResponse = ticketService.searchTicket(userId, ticketId, page, size);
+
             response.put("status", Constants.STATUS_SUCCESS);
-            response.put("data", ticketDTO);
+            response.put("data", ticketResponse);
             return ResponseEntity.ok(response);
 
         } catch (IllegalArgumentException e) {
@@ -103,33 +106,6 @@ public class TicketController {
             response.put("status", Constants.STATUS_ERROR);
             response.put("message", e.getMessage());
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
-        } catch (Exception e) {
-            logger.error("Internal server error: {}", e.getMessage());
-            response.put("status", Constants.STATUS_ERROR);
-            response.put("message", Constants.MESSAGE_INTERNAL_SERVER_ERROR);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
-        }
-    }
-
-    @GetMapping("/count/search")
-    public ResponseEntity<Map<String, Object>> getTicketCount(@RequestParam long userId,
-                                                              @RequestParam String role,
-                                                              @RequestParam String category) {
-        Map<String, Object> response = new HashMap<>();
-
-        try {
-            logger.info("Fetching ticket count for userId: {}, role: {}, category: {}", userId, role, category);
-            Map<String, Long> count = ticketService.getCountActiveResolved(userId, role, category);
-            response.put("status", Constants.STATUS_SUCCESS);
-            response.put("data", count);
-            return ResponseEntity.ok(response);
-
-        } catch (IllegalArgumentException e) {
-            logger.error("Invalid argument: {}", e.getMessage());
-            response.put("status", Constants.STATUS_ERROR);
-            response.put("message", e.getMessage());
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
-
         } catch (Exception e) {
             logger.error("Internal server error: {}", e.getMessage());
             response.put("status", Constants.STATUS_ERROR);

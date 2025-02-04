@@ -19,8 +19,9 @@ import java.util.Set;
 @Table(name = "users")
 @Data
 @NoArgsConstructor
-@JsonIgnoreProperties({"agents", "customers"})  // Ignore unnecessary fields during serialization
+@JsonIgnoreProperties({"agents", "customers"})  // Ignoring unnecessary fields during serialization
 public class User {
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long userId;
