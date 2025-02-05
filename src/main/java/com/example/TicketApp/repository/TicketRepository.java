@@ -18,4 +18,12 @@ public interface TicketRepository extends JpaRepository<Ticket,Long> {
 
      Optional<Ticket> findById(long ticketId);
 
+     @Query("SELECT t FROM Ticket t WHERE " +
+             "(:role = 'AGENT' AND t.agent.id = :userId) OR " +
+             "(:role = 'CUSTOMER' AND t.customer.id = :userId) AND " +
+             "(:status IS NULL OR t.status = :status)")
+     Page<Ticket> findFilteredTickets(@Param("userId") long userId,
+                                      @Param("role") String role,
+                                      @Param("status") String status,
+                                      Pageable pageable);
 }

@@ -11,6 +11,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
 import java.util.Optional;
 
 @Repository
@@ -18,8 +19,7 @@ public interface TicketResponseRepository extends JpaRepository<TicketResponse,L
     Optional<TicketResponse> findById(long responseId);
 
 
-
-    Page<TicketResponse> findByTicketAndUser(@Param("ticket") Ticket ticket, @Param("user") User user, Pageable pageable);
-
+    @Query("SELECT tr FROM TicketResponse tr WHERE tr.ticket.id = :ticketId")
+    Page<TicketResponse> findByTicketId(Long ticketId, Pageable pageable);
 
 }

@@ -51,6 +51,7 @@ public class TicketService {
         this.redisTemplate = redisTemplate;
     }
 
+
     public Map<String, List<SimpleTicketDTO>> getFilteredTickets(long userId, String role, String status, Pageable pageable) {
         // Validate user existence
         User user = userRespository.findById(userId)
@@ -137,6 +138,7 @@ public class TicketService {
     }
 
 
+
     public Map<String, Long> getCountActiveResolved(long userId, String role, String category) {
         // Validate role
         if (role == null || (!role.equalsIgnoreCase("AGENT") && !role.equalsIgnoreCase("CUSTOMER"))) {
@@ -185,13 +187,12 @@ public class TicketService {
         return counts;
     }
 
-
     public Map<String, Object> searchTicket(long userId, long ticketId, int page, int size) {
         Map<String, Object> responseMap = new HashMap<>();
 
         // Validate and retrieve the user
         User user = userRespository.findById(userId)
-                .orElseThrow(() -> new UserNotFoundException("User not found with ID: " + userId));
+                .orElseThrow(() -> new UserNotFoundException("User  not found with ID: " + userId));
 
         // Validate and retrieve the ticket
         Ticket ticket = ticketRepository.findById(ticketId)
@@ -199,7 +200,7 @@ public class TicketService {
 
         // Validate ticket ownership or association (Customer or Agent)
         if (!ticket.getCustomer().equals(user) && (ticket.getAgent() == null || !ticket.getAgent().equals(user))) {
-            throw new UserNotAuthorizedException("User ID " + userId + " is not authorized to view ticket ID " + ticketId);
+            throw new UserNotAuthorizedException("User  ID " + userId + " is not authorized to view ticket ID " + ticketId);
         }
 
         // Map the ticket fields into the response
@@ -207,30 +208,37 @@ public class TicketService {
         ticketDetails.put("ticketId", ticket.getTicketId());
         ticketDetails.put("status", ticket.getStatus());
         ticketDetails.put("category", ticket.getCategory());
-        ticketDetails.put("time", ticket.getCreatedAt());  // Assuming 'createdAt' is the 'time' you're referring to
-        ticketDetails.put("description", ticket.getDescription());  // Assuming 'description' is a field in the Ticket
+        ticketDetails.put("time", ticket.getCreatedAt());
+        ticketDetails.put("description", ticket.getDescription());
 
-        // Paginate the ticket responses from the database
-        Page<TicketResponse> paginatedResponses = ticketResponseRepository
-                .findByTicketAndUser(ticket, user, PageRequest.of(page, size));
+        // Create a Pageable object for pagination
+        Pageable pageable = PageRequest.of(page, size);
+
+        // Fetch paginated responses directly from the repository
+        Page<TicketResponse> paginatedResponsePage = ticketResponseRepository.findByTicketId(ticketId, pageable);
+
+        // Get the content of the paginated responses
+        List<TicketResponse> paginatedResponses = paginatedResponsePage.getContent();
+
+        // Calculate total responses for pagination
+        long totalResponses = paginatedResponsePage.getTotalElements();
+        int totalPages = paginatedResponsePage.getTotalPages();
 
         // Map the paginated responses to DTOs
-        List<TicketResponseDTO> responseDTOs = mapResponsesToDTO(paginatedResponses.getContent(), ticket, user);
+        List<TicketResponseDTO> mergedDTOs = mapResponsesToDTOs(paginatedResponses, ticket, user);
 
-        // Add ticket details and responses to the response map
-        ticketDetails.put("responses", responseDTOs);
-        ticketDetails.put("totalPages", paginatedResponses.getTotalPages());
-        ticketDetails.put("totalElements", paginatedResponses.getTotalElements());
+        // Add ticket details, responses, and total pages to the response map
+        ticketDetails.put("responses", mergedDTOs);
+        ticketDetails.put("totalPages", totalPages);
 
         return ticketDetails;
     }
 
-    private List<TicketResponseDTO> mapResponsesToDTO(List<TicketResponse> responses, Ticket ticket, User user) {
+    private List<TicketResponseDTO> mapResponsesToDTOs(List<TicketResponse> responses, Ticket ticket, User user) {
         List<TicketResponseDTO> responseDTOs = new ArrayList<>();
-
         for (TicketResponse response : responses) {
-            String userEmail = "No Email";
-            String agentEmail = "No Email";
+            String userEmail;
+            String agentEmail;
 
             // For CUSTOMER: userEmail is the customer's email, and agentEmail is the agent's email
             // For AGENT: userEmail is the agent's email, and agentEmail is the customer's email
@@ -240,6 +248,10 @@ public class TicketService {
             } else if (user.getRole() == Role.AGENT) {
                 userEmail = ticket.getAgent() != null ? ticket.getAgent().getEmail() : "No Email";
                 agentEmail = ticket.getCustomer() != null ? ticket.getCustomer().getEmail() : "No Email";
+            } else {
+                // Default case if the role is null or unrecognized
+                userEmail = "No Email";
+                agentEmail = "No Email";
             }
 
             // Add the response to DTO list
@@ -256,10 +268,6 @@ public class TicketService {
 
         return responseDTOs;
     }
-
-
-
-
     public List<TicketResponseDTO> getAllTicketResponses(long userId, long ticketId) {
         Ticket ticket = ticketRepository.findById(ticketId)
                 .orElseThrow(() -> new BookingNotFoundException("Ticket not found with ID: " + ticketId));
