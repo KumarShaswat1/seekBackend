@@ -158,8 +158,9 @@ public class TicketService {
             throw new IllegalArgumentException("Invalid role. Role must be 'AGENT' or 'CUSTOMER'.");
         }
 
+        List<Ticket> tickets = ticketRepository.findAll();
         // Generate cache key (including category)
-        String cacheKey = Constants.CACHE_KEY_PREFIX + userId + "::" + role.toUpperCase() + "::" + category;
+        String cacheKey = Constants.CACHE_KEY_PREFIX + userId + "::" + role.toUpperCase() + "::" + category + "::" + tickets.size();
 
         // Try to get cached result
         Map<String, Long> cachedResult = (Map<String, Long>) redisTemplate.opsForValue().get(cacheKey);
@@ -168,7 +169,7 @@ public class TicketService {
         }
 
         // Cache miss - compute fresh result
-        List<Ticket> tickets = ticketRepository.findAll().stream()
+        tickets=tickets.stream()
                 .filter(ticket -> {
                     // Filter by userId and role
                     boolean isUserMatch = (role.equalsIgnoreCase("AGENT") && ticket.getAgent() != null && ticket.getAgent().getUserId() == userId) ||
