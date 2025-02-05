@@ -51,94 +51,6 @@ public class TicketService {
         this.redisTemplate = redisTemplate;
     }
 
-
-    public Map<String, List<SimpleTicketDTO>> getFilteredTickets(long userId, String role, String status, Pageable pageable) {
-        // Validate user existence
-        User user = userRespository.findById(userId)
-                .orElseThrow(() -> new UserNotFoundException("User not found with ID: " + userId));
-
-        // Validate role
-        if (role == null || (!role.equalsIgnoreCase("AGENT") && !role.equalsIgnoreCase("CUSTOMER"))) {
-            throw new IllegalArgumentException("Invalid role. Role must be 'AGENT' or 'CUSTOMER'.");
-        }
-
-        List<Ticket> tickets;
-
-        // Determine tickets based on role
-        if ("AGENT".equalsIgnoreCase(role)) {
-            tickets = user.getTicketsAsAgent();
-        } else {
-            tickets = user.getTicketsAsCustomer();
-        }
-
-        // Filter tickets based on status (ACTIVE, RESOLVED or ALL)
-        if (status != null && !status.equalsIgnoreCase("ALL") && !status.equalsIgnoreCase("ACTIVE") && !status.equalsIgnoreCase("RESOLVED")) {
-            throw new IllegalArgumentException("Invalid status. Status must be 'ACTIVE', 'RESOLVED', or 'ALL'.");
-        }
-
-        tickets = tickets.stream()
-                .filter(ticket -> "ALL".equalsIgnoreCase(status) || ticket.getStatus().name().equalsIgnoreCase(status))
-                .collect(Collectors.toList());
-
-        // Separate tickets into Prebooking and Postbooking
-        List<SimpleTicketDTO> prebookingTickets = new ArrayList<>();
-        List<SimpleTicketDTO> postbookingTickets = new ArrayList<>();
-
-        for (Ticket ticket : tickets) {
-            // Get Customer and Agent emails
-            String customerEmail = ticket.getCustomer() != null ? ticket.getCustomer().getEmail() : "No Email";
-            String agentEmail = ticket.getAgent() != null ? ticket.getAgent().getEmail() : "No Email";
-
-            // Create DTO with email addresses included
-            SimpleTicketDTO dto = new SimpleTicketDTO(
-                    ticket.getTicketId(),
-                    ticket.getDescription(),
-                    ticket.getStatus().name(),
-                    ticket.getCreatedAt(),
-                    customerEmail,
-                    agentEmail
-            );
-
-            if (ticket.getBooking() == null) {
-                // No booking ID exists, this is a prebooking ticket
-                prebookingTickets.add(dto);
-            } else {
-                postbookingTickets.add(dto);
-            }
-        }
-
-        // Apply pagination to Prebooking and Postbooking Tickets
-        List<SimpleTicketDTO> paginatedPrebookingTickets = paginate(prebookingTickets, pageable);
-        List<SimpleTicketDTO> paginatedPostbookingTickets = paginate(postbookingTickets, pageable);
-
-        // Create a map to hold prebooking and postbooking tickets
-        Map<String, List<SimpleTicketDTO>> result = new HashMap<>();
-        result.put("PrebookingTickets", paginatedPrebookingTickets);
-        result.put("PostbookingTickets", paginatedPostbookingTickets);
-
-        return result;
-    }
-
-    // Helper method for pagination
-    private List<SimpleTicketDTO> paginate(List<SimpleTicketDTO> tickets, Pageable pageable) {
-        int start = (int) pageable.getOffset();
-        int end = Math.min(start + pageable.getPageSize(), tickets.size());
-
-        // Ensure no negative indices
-        if (start >= tickets.size()) {
-            return Collections.emptyList();  // Return empty if offset exceeds ticket size
-        }
-
-        // Handle cases where subList could go out of bounds
-        if (end > tickets.size()) {
-            end = tickets.size();
-        }
-
-        return tickets.subList(start, end);
-    }
-
-
-
     public Map<String, Long> getCountActiveResolved(long userId, String role, String category) {
         // Validate role
         if (role == null || (!role.equalsIgnoreCase("AGENT") && !role.equalsIgnoreCase("CUSTOMER"))) {
@@ -342,4 +254,56 @@ public class TicketService {
         }
         return agents.get(new Random().nextInt(agents.size()));
     }
+
+
+    public Map<String, List<SimpleTicketDTO>> getFilteredTickets(long userId, String role, String status, Pageable pageable) {
+        // Validate the role
+        if (role == null || (!role.equalsIgnoreCase("AGENT") && !role.equalsIgnoreCase("CUSTOMER"))) {
+            throw new IllegalArgumentException("Invalid role. Role must be 'AGENT' or 'CUSTOMER'.");
+        }
+
+        // Fetch tickets based on userId, role, and status
+        Page<Ticket> ticketPage = ticketRepository.findByUserIdAndRoleAndStatus(userId, Role.valueOf(role.toUpperCase()), Status.valueOf(status.toUpperCase()), pageable);
+        List<Ticket> tickets = ticketPage.getContent();
+
+        // Filter tickets based on status
+        tickets = tickets.stream()
+                .filter(ticket -> "ALL".equalsIgnoreCase(status) || ticket.getStatus().name().equalsIgnoreCase(status))
+                .collect(Collectors.toList());
+
+        // Separate tickets into Prebooking and Postbooking
+        List<SimpleTicketDTO> prebookingTickets = new ArrayList<>();
+        List<SimpleTicketDTO> postbookingTickets = new ArrayList<>();
+
+        for (Ticket ticket : tickets) {
+            // Get Customer and Agent emails
+            String customerEmail = ticket.getCustomer() != null ? ticket.getCustomer().getEmail() : "No Email";
+            String agentEmail = ticket.getAgent() != null ? ticket.getAgent().getEmail() : "No Email";
+
+            // Create DTO with email addresses included
+            SimpleTicketDTO dto = new SimpleTicketDTO(
+                    ticket.getTicketId(),
+                    ticket.getDescription(),
+                    ticket.getStatus().name(),
+                    ticket.getCreatedAt(),
+                    customerEmail,
+                    agentEmail
+            );
+
+            if (ticket.getBooking() == null) {
+                // No booking ID exists, this is a prebooking ticket
+                prebookingTickets.add(dto);
+            } else {
+                postbookingTickets.add(dto);
+            }
+        }
+
+        // Create a map to hold prebooking and postbooking tickets
+        Map<String, List<SimpleTicketDTO>> result = new HashMap<>();
+        result.put("PrebookingTickets", prebookingTickets);
+        result.put("PostbookingTickets", postbookingTickets);
+
+        return result;
+    }
+
 }
