@@ -44,4 +44,5 @@ public class TicketResponse {
 
     @UpdateTimestamp
     private LocalDateTime updatedAt;
+
 }

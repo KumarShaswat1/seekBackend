@@ -2,7 +2,9 @@ package com.example.TicketApp.repository;
 
 import com.example.TicketApp.entity.Ticket;
 import com.example.TicketApp.entity.TicketResponse;
+import com.example.TicketApp.entity.User;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -16,6 +18,8 @@ public interface TicketResponseRepository extends JpaRepository<TicketResponse,L
     Optional<TicketResponse> findById(long responseId);
 
 
-    Page<TicketResponse> findByTicket(@Param("ticket") Ticket ticket, Pageable pageable);
+
+    Page<TicketResponse> findByTicketAndUser(@Param("ticket") Ticket ticket, @Param("user") User user, Pageable pageable);
+
 
 }

@@ -3,9 +3,7 @@ package com.example.TicketApp.services;
 import com.example.TicketApp.CustomErrors.BookingNotFoundException;
 import com.example.TicketApp.CustomErrors.UserNotAuthorizedException;
 import com.example.TicketApp.CustomErrors.UserNotFoundException;
-import com.example.TicketApp.DTO.SimpleTicketDTO;
-import com.example.TicketApp.DTO.TicketDTO;
-import com.example.TicketApp.DTO.TicketResponseDTO;
+import com.example.TicketApp.DTO.*;
 import com.example.TicketApp.constants.Constants;
 import com.example.TicketApp.entity.Booking;
 import com.example.TicketApp.entity.Ticket;
@@ -23,9 +21,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.cache.annotation.CacheEvict;
 
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageImpl;
-import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.*;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
@@ -54,7 +50,6 @@ public class TicketService {
         this.bookingRespository = bookingRespository;
         this.redisTemplate = redisTemplate;
     }
-
 
     public Map<String, List<SimpleTicketDTO>> getFilteredTickets(long userId, String role, String status, Pageable pageable) {
         // Validate user existence
@@ -142,16 +137,6 @@ public class TicketService {
     }
 
 
-    // Helper method to validate postbooking status
-    private boolean isPostBookingValid(Ticket ticket, long userId) {
-        if (ticket.getBooking() != null && ticket.getBooking().getUser() != null) {
-            Booking booking = ticket.getBooking();
-            return (booking.getUser().getUserId() == userId);
-        }
-        return false;
-    }
-
-
     public Map<String, Long> getCountActiveResolved(long userId, String role, String category) {
         // Validate role
         if (role == null || (!role.equalsIgnoreCase("AGENT") && !role.equalsIgnoreCase("CUSTOMER"))) {
@@ -201,7 +186,6 @@ public class TicketService {
     }
 
 
-
     public Map<String, Object> searchTicket(long userId, long ticketId, int page, int size) {
         Map<String, Object> responseMap = new HashMap<>();
 
@@ -226,47 +210,27 @@ public class TicketService {
         ticketDetails.put("time", ticket.getCreatedAt());  // Assuming 'createdAt' is the 'time' you're referring to
         ticketDetails.put("description", ticket.getDescription());  // Assuming 'description' is a field in the Ticket
 
-        // Split ticket responses into prebooking and postbooking (merged later)
-        List<TicketResponse> mergedResponses = new ArrayList<>();
+        // Paginate the ticket responses from the database
+        Page<TicketResponse> paginatedResponses = ticketResponseRepository
+                .findByTicketAndUser(ticket, user, PageRequest.of(page, size));
 
-        if (ticket.getResponses() != null) {
-            for (TicketResponse response : ticket.getResponses()) {
-                // If there is no booking, consider it a prebooking response, otherwise it's a postbooking response
-                if (ticket.getBooking() == null) {
-                    mergedResponses.add(response); // prebooking response
-                } else {
-                    mergedResponses.add(response); // postbooking response
-                }
-            }
-        } else {
-            logger.warn("Ticket ID {} has no responses", ticketId);
-        }
-
-        // Paginate the merged responses
-        List<TicketResponseDTO> mergedDTOs = paginateAndMapResponses(mergedResponses, page, size, ticket, user);
+        // Map the paginated responses to DTOs
+        List<TicketResponseDTO> responseDTOs = mapResponsesToDTO(paginatedResponses.getContent(), ticket, user);
 
         // Add ticket details and responses to the response map
-        ticketDetails.put("responses", mergedDTOs);
+        ticketDetails.put("responses", responseDTOs);
+        ticketDetails.put("totalPages", paginatedResponses.getTotalPages());
+        ticketDetails.put("totalElements", paginatedResponses.getTotalElements());
 
         return ticketDetails;
     }
 
-
-    private List<TicketResponseDTO> paginateAndMapResponses(List<TicketResponse> responses, int page, int size, Ticket ticket, User user) {
-        // Handle pagination logic
-        if (page < 0 || size <= 0 || page * size >= responses.size()) {
-            return Collections.emptyList(); // Return an empty list if the page/size is invalid
-        }
-
-        int start = page * size;
-        int end = Math.min(start + size, responses.size());
-        List<TicketResponse> paginatedResponses = responses.subList(start, end);
-
-        // Map the paginated responses to DTOs
+    private List<TicketResponseDTO> mapResponsesToDTO(List<TicketResponse> responses, Ticket ticket, User user) {
         List<TicketResponseDTO> responseDTOs = new ArrayList<>();
-        for (TicketResponse response : paginatedResponses) {
-            String userEmail;
-            String agentEmail;
+
+        for (TicketResponse response : responses) {
+            String userEmail = "No Email";
+            String agentEmail = "No Email";
 
             // For CUSTOMER: userEmail is the customer's email, and agentEmail is the agent's email
             // For AGENT: userEmail is the agent's email, and agentEmail is the customer's email
@@ -276,10 +240,6 @@ public class TicketService {
             } else if (user.getRole() == Role.AGENT) {
                 userEmail = ticket.getAgent() != null ? ticket.getAgent().getEmail() : "No Email";
                 agentEmail = ticket.getCustomer() != null ? ticket.getCustomer().getEmail() : "No Email";
-            } else {
-                // Default case if the role is null or unrecognized
-                userEmail = "No Email";
-                agentEmail = "No Email";
             }
 
             // Add the response to DTO list
@@ -296,6 +256,7 @@ public class TicketService {
 
         return responseDTOs;
     }
+
 
 
 
