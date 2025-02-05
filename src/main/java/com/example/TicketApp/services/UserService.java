@@ -23,12 +23,12 @@ public class UserService {
     }
 
     public User signup(UserSignRequestDTO userSignRequestDTO) {
-        logger.info("Attempting to sign up user with email: {}", userSignRequestDTO.getEmail());
+        logger.info(String.format(Constants.LOG_USER_SIGNUP_ATTEMPT, userSignRequestDTO.getEmail()));
 
         // Check if the user already exists by email
         Optional<User> existingUser = userRepository.findByEmail(userSignRequestDTO.getEmail());
         if (existingUser.isPresent()) {
-            logger.error("User with email {} already exists.", userSignRequestDTO.getEmail());
+            logger.error(String.format(Constants.LOG_USER_ALREADY_EXISTS, userSignRequestDTO.getEmail()));
             throw new IllegalArgumentException(Constants.MESSAGE_USER_ALREADY_EXISTS);
         }
 
@@ -39,12 +39,12 @@ public class UserService {
         try {
             user.setRole(Role.valueOf(userSignRequestDTO.getRole().toUpperCase()));  // Convert role to Enum
         } catch (IllegalArgumentException e) {
-            logger.error("Invalid role: {}", userSignRequestDTO.getRole());
+            logger.error(String.format(Constants.LOG_INVALID_ROLE, userSignRequestDTO.getRole()));
             throw new IllegalArgumentException(Constants.MESSAGE_INVALID_ROLE);
         }
 
         User savedUser = userRepository.save(user);
-        logger.info("User with email {} created successfully.", userSignRequestDTO.getEmail());
+        logger.info(String.format(Constants.LOG_USER_CREATED, userSignRequestDTO.getEmail()));
         return savedUser;
     }
 }
