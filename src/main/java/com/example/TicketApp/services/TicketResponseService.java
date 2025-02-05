@@ -13,6 +13,7 @@ import com.example.TicketApp.CustomErrors.BookingNotFoundException;
 import com.example.TicketApp.CustomErrors.UserNotAuthorizedException;
 import com.example.TicketApp.CustomErrors.UserNotFoundException;
 import com.example.TicketApp.CustomErrors.UnauthorizedAccessException;
+import com.example.TicketApp.constants.Constants;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -41,25 +42,25 @@ public class TicketResponseService {
 
         // Ensure reply data contains valid 'responseText'
         if (replyData == null || !replyData.containsKey("responseText") || replyData.get("responseText") == null) {
-            logger.error("Reply data must include a non-null 'responseText' field.");
-            throw new IllegalArgumentException("Reply data must include a non-null 'responseText' field.");
+            logger.error(Constants.LOG_REPLY_DATA_INVALID);
+            throw new IllegalArgumentException(Constants.MESSAGE_INVALID_USERNAME_OR_PASSWORD);
         }
 
         // Find the ticket
         Ticket ticket = ticketRepository.findById(ticketId)
-                .orElseThrow(() -> new BookingNotFoundException("Ticket not found with ID: " + ticketId));
+                .orElseThrow(() -> new BookingNotFoundException(Constants.LOG_TICKET_NOT_FOUND, ticketId));
 
         // Find the user
         User user = userRespository.findById(userId)
-                .orElseThrow(() -> new UserNotFoundException("User not found with ID: " + userId));
+                .orElseThrow(() -> new UserNotFoundException(Constants.LOG_USER_NOT_FOUND, userId));
 
         // Validate user's authorization for the role
         validateAuthorization(ticket, user, role);
 
         // Check if the role matches the allowed roles for the user in the context of the ticket
         if (!isValidRoleForTicket(ticket, user, role)) {
-            logger.error("User with ID: {} is not authorized to reply with role: {}", userId, role);
-            throw new UnauthorizedAccessException("User is not authorized to reply with the specified role.");
+            logger.error(Constants.LOG_ROLE_NOT_AUTHORIZED, userId, role);
+            throw new UnauthorizedAccessException(Constants.MESSAGE_INVALID_ROLE);
         }
 
         // Create and save the TicketResponse entity
@@ -80,20 +81,20 @@ public class TicketResponseService {
         String userEmail = user.getEmail();
         String agentEmail;
 
-        if (role.equals("AGENT")) {
+        if (role.equals(Constants.ROLE_AGENT)) {
             // Ensure ticket.getCustomer() is not null
             User customer = ticket.getCustomer();
             if (customer == null) {
-                logger.error("Customer not found for the ticket.");
-                throw new IllegalStateException("Customer not found for the ticket.");
+                logger.error(Constants.LOG_CUSTOMER_NOT_FOUND);
+                throw new IllegalStateException(Constants.MESSAGE_USER_NOT_FOUND);
             }
             agentEmail = customer.getEmail();
         } else {
             // Ensure ticket.getAgent() is not null
             User agent = ticket.getAgent();
             if (agent == null) {
-                logger.error("Agent not found for the ticket.");
-                throw new IllegalStateException("Agent not found for the ticket.");
+                logger.error(Constants.LOG_AGENT_NOT_FOUND);
+                throw new IllegalStateException(Constants.MESSAGE_USER_NOT_FOUND);
             }
             agentEmail = agent.getEmail();
         }
@@ -113,28 +114,28 @@ public class TicketResponseService {
     // New helper method to validate the role based on the ticket context and user
     private boolean isValidRoleForTicket(Ticket ticket, User user, String role) {
         // Example validation logic for role
-        if (role.equalsIgnoreCase("AGENT")) {
+        if (role.equalsIgnoreCase(Constants.ROLE_AGENT)) {
             return user.equals(ticket.getAgent()); // Only the assigned agent can reply as AGENT
-        } else if (role.equalsIgnoreCase("CUSTOMER")) {
+        } else if (role.equalsIgnoreCase(Constants.ROLE_CUSTOMER)) {
             return user.equals(ticket.getCustomer()); // Only the assigned customer can reply as CUSTOMER
         }
         return false; // Invalid role
     }
 
-
     // Update a ticket response
     public TicketResponse updateTicketResponse(long userId, long ticketId, long responseId, String updateText) {
         User user = userRespository.findById(userId)
-                .orElseThrow(() -> new UserNotFoundException("User not found"));
+                .orElseThrow(() -> new UserNotFoundException(Constants.LOG_USER_NOT_FOUND, userId));
 
         Ticket ticket = ticketRepository.findById(ticketId)
-                .orElseThrow(() -> new BookingNotFoundException("Ticket not found"));
+                .orElseThrow(() -> new BookingNotFoundException(Constants.LOG_TICKET_NOT_FOUND, ticketId));
 
         TicketResponse ticketResponse = ticketResponseRepository.findById(responseId)
-                .orElseThrow(() -> new IllegalArgumentException("Reply not found"));
+                .orElseThrow(() -> new IllegalArgumentException(Constants.LOG_INVALID_TICKET));
 
         if (!ticketResponse.getUser().equals(user)) {
-            throw new UserNotAuthorizedException("User is not authorized to update this reply");
+            logger.error(Constants.LOG_USER_NOT_AUTHORIZED_UPDATE);
+            throw new UserNotAuthorizedException(Constants.MESSAGE_USER_NOT_FOUND);
         }
 
         ticketResponse.setResponseText(updateText);
@@ -144,16 +145,17 @@ public class TicketResponseService {
     // Delete a ticket response
     public void deleteTicketResponse(long userId, long ticketId, long responseId) {
         User user = userRespository.findById(userId)
-                .orElseThrow(() -> new UserNotFoundException("User not found"));
+                .orElseThrow(() -> new UserNotFoundException(Constants.LOG_USER_NOT_FOUND, userId));
 
         Ticket ticket = ticketRepository.findById(ticketId)
-                .orElseThrow(() -> new BookingNotFoundException("Ticket not found"));
+                .orElseThrow(() -> new BookingNotFoundException(Constants.LOG_TICKET_NOT_FOUND, ticketId));
 
         TicketResponse ticketResponse = ticketResponseRepository.findById(responseId)
-                .orElseThrow(() -> new IllegalArgumentException("Reply not found"));
+                .orElseThrow(() -> new IllegalArgumentException(Constants.LOG_INVALID_TICKET));
 
         if (!ticketResponse.getUser().equals(user)) {
-            throw new UserNotAuthorizedException("User is not authorized to delete this reply");
+            logger.error(Constants.LOG_USER_NOT_AUTHORIZED_DELETE);
+            throw new UserNotAuthorizedException(Constants.MESSAGE_USER_NOT_FOUND);
         }
 
         ticketResponseRepository.delete(ticketResponse);
@@ -163,20 +165,22 @@ public class TicketResponseService {
     public boolean updateTicketResponseStatus(long userId, long ticketId) {
         // Find the user by ID
         User user = userRespository.findById(userId)
-                .orElseThrow(() -> new UserNotFoundException("User not found"));
+                .orElseThrow(() -> new UserNotFoundException(Constants.LOG_USER_NOT_FOUND, userId));
 
         // Ensure only agents can update the status
         if (user.getRole() != Role.AGENT) {
-            throw new UserNotAuthorizedException("Access denied. Only agents can update the status.");
+            logger.error(Constants.LOG_ACCESS_DENIED);
+            throw new UserNotAuthorizedException(Constants.MESSAGE_INVALID_ROLE);
         }
 
         // Find the ticket by ID
         Ticket ticket = ticketRepository.findById(ticketId)
-                .orElseThrow(() -> new BookingNotFoundException("Ticket not found"));
+                .orElseThrow(() -> new BookingNotFoundException(Constants.LOG_TICKET_NOT_FOUND, ticketId));
 
         // Ensure the user is the assigned agent for this ticket
         if (ticket.getAgent() == null || !ticket.getAgent().equals(user)) {
-            throw new UserNotAuthorizedException("User is not authorized to update the status of this ticket.");
+            logger.error(Constants.LOG_USER_NOT_AUTHORIZED_STATUS_UPDATE);
+            throw new UserNotAuthorizedException(Constants.MESSAGE_USER_NOT_FOUND);
         }
 
         // Update ticket status to RESOLVED
@@ -191,23 +195,23 @@ public class TicketResponseService {
 
     // Helper method: Validate role
     private void validateRole(String role) {
-        if (role == null || (!role.equalsIgnoreCase("AGENT") && !role.equalsIgnoreCase("CUSTOMER"))) {
-            logger.error("Invalid role. Role must be 'AGENT' or 'CUSTOMER'.");
-            throw new IllegalArgumentException("Invalid role. Role must be 'AGENT' or 'CUSTOMER'.");
+        if (role == null || (!role.equalsIgnoreCase(Constants.ROLE_AGENT) && !role.equalsIgnoreCase(Constants.ROLE_CUSTOMER))) {
+            logger.error(Constants.LOG_ROLE_VALIDATION_FAILED);
+            throw new IllegalArgumentException(Constants.MESSAGE_INVALID_ROLE);
         }
     }
 
     // Helper method: Validate authorization
     private void validateAuthorization(Ticket ticket, User user, String role) {
-        if ("AGENT".equalsIgnoreCase(role)) {
+        if (Constants.ROLE_AGENT.equalsIgnoreCase(role)) {
             if (ticket.getAgent() == null || !ticket.getAgent().equals(user)) {
-                logger.error("User is not authorized to reply as an agent for this ticket.");
-                throw new UserNotAuthorizedException("User is not authorized to reply as an agent for this ticket.");
+                logger.error(Constants.LOG_USER_NOT_AUTHORIZED, role);
+                throw new UserNotAuthorizedException(Constants.MESSAGE_USER_NOT_FOUND);
             }
-        } else if ("CUSTOMER".equalsIgnoreCase(role)) {
+        } else if (Constants.ROLE_CUSTOMER.equalsIgnoreCase(role)) {
             if (ticket.getCustomer() == null || !ticket.getCustomer().equals(user)) {
-                logger.error("User is not authorized to reply as a customer for this ticket.");
-                throw new UserNotAuthorizedException("User is not authorized to reply as a customer for this ticket.");
+                logger.error(Constants.LOG_USER_NOT_AUTHORIZED, role);
+                throw new UserNotAuthorizedException(Constants.MESSAGE_USER_NOT_FOUND);
             }
         }
     }

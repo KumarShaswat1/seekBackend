@@ -41,7 +41,6 @@ public class TicketService {
     private final BookingRespository bookingRespository;
     private final RedisTemplate<String, Object> redisTemplate;
 
-
     public TicketService(UserRespository userRespository, TicketRepository ticketRepository, TicketResponseRepository ticketResponseRepository,
                          BookingRespository bookingRespository, RedisTemplate<String, Object> redisTemplate) {
         this.userRespository = userRespository;
@@ -53,8 +52,8 @@ public class TicketService {
 
     public Map<String, Long> getCountActiveResolved(long userId, String role, String category) {
         // Validate role
-        if (role == null || (!role.equalsIgnoreCase("AGENT") && !role.equalsIgnoreCase("CUSTOMER"))) {
-            throw new IllegalArgumentException("Invalid role. Role must be 'AGENT' or 'CUSTOMER'.");
+        if (role == null || (!role.equalsIgnoreCase(Constants.ROLE_AGENT) && !role.equalsIgnoreCase(Constants.ROLE_CUSTOMER))) {
+            throw new IllegalArgumentException(Constants.MESSAGE_INVALID_ROLE);
         }
 
         List<Ticket> tickets = ticketRepository.findAll();
@@ -68,14 +67,14 @@ public class TicketService {
         }
 
         // Cache miss - compute fresh result
-        tickets=tickets.stream()
+        tickets = tickets.stream()
                 .filter(ticket -> {
                     // Filter by userId and role
-                    boolean isUserMatch = (role.equalsIgnoreCase("AGENT") && ticket.getAgent() != null && ticket.getAgent().getUserId() == userId) ||
-                            (role.equalsIgnoreCase("CUSTOMER") && ticket.getCustomer() != null && ticket.getCustomer().getUserId() == userId);
+                    boolean isUserMatch = (role.equalsIgnoreCase(Constants.ROLE_AGENT) && ticket.getAgent() != null && ticket.getAgent().getUserId() == userId) ||
+                            (role.equalsIgnoreCase(Constants.ROLE_CUSTOMER) && ticket.getCustomer() != null && ticket.getCustomer().getUserId() == userId);
 
                     // Filter by category
-                    boolean isCategoryMatch = category != null  &&  category.equalsIgnoreCase("ALL") || category.equalsIgnoreCase(String.valueOf(ticket.getCategory()));
+                    boolean isCategoryMatch = category != null  &&  category.equalsIgnoreCase(Constants.STATUS_ALL) || category.equalsIgnoreCase(String.valueOf(ticket.getCategory()));
 
                     return isUserMatch && isCategoryMatch;
                 })
@@ -90,8 +89,8 @@ public class TicketService {
                 .count();
 
         Map<String, Long> counts = new HashMap<>();
-        counts.put("active", activeCount);
-        counts.put("resolved", resolvedCount);
+        counts.put(Constants.STATUS_ACTIVE, activeCount);
+        counts.put(Constants.STATUS_RESOLVED, resolvedCount);
 
         // Cache the result with TTL
         redisTemplate.opsForValue().set(cacheKey, counts, Duration.ofMinutes(Constants.CACHE_TTL));
@@ -104,15 +103,15 @@ public class TicketService {
 
         // Validate and retrieve the user
         User user = userRespository.findById(userId)
-                .orElseThrow(() -> new UserNotFoundException("User  not found with ID: " + userId));
+                .orElseThrow(() -> new UserNotFoundException(String.format(Constants.LOG_USER_NOT_FOUND, userId)));
 
         // Validate and retrieve the ticket
         Ticket ticket = ticketRepository.findById(ticketId)
-                .orElseThrow(() -> new BookingNotFoundException("Ticket not found with ID: " + ticketId));
+                .orElseThrow(() -> new BookingNotFoundException(String.format(Constants.LOG_TICKET_NOT_FOUND, ticketId)));
 
         // Validate ticket ownership or association (Customer or Agent)
         if (!ticket.getCustomer().equals(user) && (ticket.getAgent() == null || !ticket.getAgent().equals(user))) {
-            throw new UserNotAuthorizedException("User  ID " + userId + " is not authorized to view ticket ID " + ticketId);
+            throw new UserNotAuthorizedException(String.format(Constants.LOG_USER_NOT_AUTHORIZED, userId, ticketId));
         }
 
         // Map the ticket fields into the response
@@ -155,15 +154,15 @@ public class TicketService {
             // For CUSTOMER: userEmail is the customer's email, and agentEmail is the agent's email
             // For AGENT: userEmail is the agent's email, and agentEmail is the customer's email
             if (user.getRole() == null || user.getRole() == Role.CUSTOMER) {
-                userEmail = ticket.getCustomer() != null ? ticket.getCustomer().getEmail() : "No Email";
-                agentEmail = ticket.getAgent() != null ? ticket.getAgent().getEmail() : "No Email";
+                userEmail = ticket.getCustomer() != null ? ticket.getCustomer().getEmail() : Constants.NO_EMAIL;
+                agentEmail = ticket.getAgent() != null ? ticket.getAgent().getEmail() : Constants.NO_EMAIL;
             } else if (user.getRole() == Role.AGENT) {
-                userEmail = ticket.getAgent() != null ? ticket.getAgent().getEmail() : "No Email";
-                agentEmail = ticket.getCustomer() != null ? ticket.getCustomer().getEmail() : "No Email";
+                userEmail = ticket.getAgent() != null ? ticket.getAgent().getEmail() : Constants.NO_EMAIL;
+                agentEmail = ticket.getCustomer() != null ? ticket.getCustomer().getEmail() : Constants.NO_EMAIL;
             } else {
                 // Default case if the role is null or unrecognized
-                userEmail = "No Email";
-                agentEmail = "No Email";
+                userEmail = Constants.NO_EMAIL;
+                agentEmail = Constants.NO_EMAIL;
             }
 
             // Add the response to DTO list
@@ -171,7 +170,7 @@ public class TicketService {
                     response.getResponseId(),
                     ticket.getTicketId(),
                     response.getResponseText(),
-                    response.getRole() != null ? response.getRole().toString() : "UNKNOWN",
+                    response.getRole() != null ? response.getRole().toString() : Constants.UNKNOWN,
                     userEmail,        // from
                     agentEmail,       // to
                     response.getCreatedAt()
@@ -180,39 +179,15 @@ public class TicketService {
 
         return responseDTOs;
     }
-    public List<TicketResponseDTO> getAllTicketResponses(long userId, long ticketId) {
-        Ticket ticket = ticketRepository.findById(ticketId)
-                .orElseThrow(() -> new BookingNotFoundException("Ticket not found with ID: " + ticketId));
-
-        List<TicketResponse> ticketResponses = ticket.getResponses();
-        List<TicketResponseDTO> repliesDTO = new ArrayList<>();
-        for (TicketResponse ticketResponse : ticketResponses) {
-            User user = ticketResponse.getUser();
-
-            TicketResponseDTO responseDTO = new TicketResponseDTO(
-                    ticketResponse.getResponseId(),                // Response ID
-                    ticket.getTicketId(),                          // Associated Ticket ID
-                    ticketResponse.getResponseText(),              // Response Text
-                    ticketResponse.getRole().toString(),           // Role
-                    ticketResponse.getUser().getEmail(),           // User's Email
-                    ticket.getAgent() != null ? ticket.getAgent().getEmail() : null, // Agent's Email
-                    ticketResponse.getCreatedAt()                  // Created At Timestamp
-            );
-
-            repliesDTO.add(responseDTO);
-        }
-
-        return repliesDTO;
-    }
 
     public Ticket createTicket(long userId, Long bookingId, String description, String role) {
-        logger.info("Creating ticket for userId: " + userId + " with bookingId: " + bookingId);
+        logger.info(String.format(Constants.LOG_USER_SIGNUP_ATTEMPT, userId));
 
         User user = userRespository.findById(userId)
-                .orElseThrow(() -> new UserNotFoundException("User not found with ID: " + userId));
+                .orElseThrow(() -> new UserNotFoundException(String.format(Constants.LOG_USER_NOT_FOUND, userId)));
 
-        if (!role.equalsIgnoreCase("CUSTOMER")) {
-            throw new UserNotAuthorizedException("Only customers can create tickets.");
+        if (!role.equalsIgnoreCase(Constants.ROLE_CUSTOMER)) {
+            throw new UserNotAuthorizedException(Constants.MESSAGE_INVALID_ROLE);
         }
 
         Ticket ticket = new Ticket();
@@ -228,7 +203,7 @@ public class TicketService {
         } else {
             // Postbooking Ticket (Booking ID Provided)
             Booking booking = bookingRespository.findById(bookingId)
-                    .orElseThrow(() -> new BookingNotFoundException("Invalid booking id: " + bookingId));
+                    .orElseThrow(() -> new BookingNotFoundException(String.format(Constants.MESSAGE_TICKET_NOT_FOUND, bookingId)));
 
             if (!booking.getUser().getUserId().equals(user.getUserId())) {
                 throw new UserNotAuthorizedException("User is not authorized to access this booking.");
@@ -242,7 +217,7 @@ public class TicketService {
         ticket.setAgent(agent);
 
         Ticket savedTicket = ticketRepository.save(ticket);
-        logger.info("Ticket created successfully with ID: " + savedTicket.getTicketId());
+        logger.info(String.format(Constants.LOG_USER_CREATED, savedTicket.getTicketId()));
 
         return savedTicket;
     }
@@ -255,11 +230,10 @@ public class TicketService {
         return agents.get(new Random().nextInt(agents.size()));
     }
 
-
     public Map<String, List<SimpleTicketDTO>> getFilteredTickets(long userId, String role, String status, Pageable pageable) {
         // Validate the role
-        if (role == null || (!role.equalsIgnoreCase("AGENT") && !role.equalsIgnoreCase("CUSTOMER"))) {
-            throw new IllegalArgumentException("Invalid role. Role must be 'AGENT' or 'CUSTOMER'.");
+        if (role == null || (!role.equalsIgnoreCase(Constants.ROLE_AGENT) && !role.equalsIgnoreCase(Constants.ROLE_CUSTOMER))) {
+            throw new IllegalArgumentException(Constants.MESSAGE_INVALID_ROLE);
         }
 
         // Fetch tickets based on userId, role, and status
@@ -268,7 +242,7 @@ public class TicketService {
 
         // Filter tickets based on status
         tickets = tickets.stream()
-                .filter(ticket -> "ALL".equalsIgnoreCase(status) || ticket.getStatus().name().equalsIgnoreCase(status))
+                .filter(ticket -> Constants.STATUS_ALL.equalsIgnoreCase(status) || ticket.getStatus().name().equalsIgnoreCase(status))
                 .collect(Collectors.toList());
 
         // Separate tickets into Prebooking and Postbooking
@@ -277,8 +251,8 @@ public class TicketService {
 
         for (Ticket ticket : tickets) {
             // Get Customer and Agent emails
-            String customerEmail = ticket.getCustomer() != null ? ticket.getCustomer().getEmail() : "No Email";
-            String agentEmail = ticket.getAgent() != null ? ticket.getAgent().getEmail() : "No Email";
+            String customerEmail = ticket.getCustomer() != null ? ticket.getCustomer().getEmail() : Constants.NO_EMAIL;
+            String agentEmail = ticket.getAgent() != null ? ticket.getAgent().getEmail() : Constants.NO_EMAIL;
 
             // Create DTO with email addresses included
             SimpleTicketDTO dto = new SimpleTicketDTO(
@@ -304,6 +278,31 @@ public class TicketService {
         result.put("PostbookingTickets", postbookingTickets);
 
         return result;
+    }
+
+    public List<TicketResponseDTO> getAllTicketResponses(long userId, long ticketId) {
+        Ticket ticket = ticketRepository.findById(ticketId)
+                .orElseThrow(() -> new BookingNotFoundException("Ticket not found with ID: " + ticketId));
+
+        List<TicketResponse> ticketResponses = ticket.getResponses();
+        List<TicketResponseDTO> repliesDTO = new ArrayList<>();
+        for (TicketResponse ticketResponse : ticketResponses) {
+            User user = ticketResponse.getUser();
+
+            TicketResponseDTO responseDTO = new TicketResponseDTO(
+                    ticketResponse.getResponseId(),                // Response ID
+                    ticket.getTicketId(),                          // Associated Ticket ID
+                    ticketResponse.getResponseText(),              // Response Text
+                    ticketResponse.getRole().toString(),           // Role
+                    ticketResponse.getUser().getEmail(),           // User's Email
+                    ticket.getAgent() != null ? ticket.getAgent().getEmail() : null, // Agent's Email
+                    ticketResponse.getCreatedAt()                  // Created At Timestamp
+            );
+
+            repliesDTO.add(responseDTO);
+        }
+
+        return repliesDTO;
     }
 
 }
