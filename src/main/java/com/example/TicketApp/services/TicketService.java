@@ -70,8 +70,13 @@ public class TicketService {
             tickets = ticketRepository.findByUserIdRoleAndCategory(userId, role, category);
         }
 
-        // Generate cache key
-        String cacheKey = Constants.CACHE_KEY_PREFIX + userId + "::" + role.toUpperCase() + "::" + category + "::" + tickets.size();
+        // Compute counts
+        long activeCount = tickets.stream().filter(ticket -> ticket.getStatus() == Status.ACTIVE).count();
+        long resolvedCount = tickets.stream().filter(ticket -> ticket.getStatus() == Status.RESOLVED).count();
+
+
+        String cacheKey = Constants.CACHE_KEY_PREFIX + userId + "::" + role.toUpperCase() + "::" + category +
+                "::ACTIVE_" + activeCount + "::RESOLVED_" + resolvedCount;
 
         // Try fetching from cache
         String cachedJson = (String) redisTemplate.opsForValue().get(cacheKey);
@@ -82,10 +87,6 @@ public class TicketService {
                 e.printStackTrace();
             }
         }
-
-        // Compute counts
-        long activeCount = tickets.stream().filter(ticket -> ticket.getStatus() == Status.ACTIVE).count();
-        long resolvedCount = tickets.stream().filter(ticket -> ticket.getStatus() == Status.RESOLVED).count();
 
         // Store in response
         Map<String, Long> counts = Map.of("ACTIVE", activeCount, "RESOLVED", resolvedCount);
