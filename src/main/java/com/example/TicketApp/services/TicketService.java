@@ -52,48 +52,74 @@ public class TicketService {
 
     public Map<String, Long> getCountActiveResolved(long userId, String role, String category) {
         // Validate role
-        if (role == null || (!role.equalsIgnoreCase(Constants.ROLE_AGENT) && !role.equalsIgnoreCase(Constants.ROLE_CUSTOMER))) {
+        if (role == null ||
+                !(role.equalsIgnoreCase(Constants.ROLE_AGENT) || role.equalsIgnoreCase(Constants.ROLE_CUSTOMER))) {
             throw new IllegalArgumentException(Constants.MESSAGE_INVALID_ROLE);
         }
 
-        List<Ticket> tickets = ticketRepository.findAll();
-        // Generate cache key (including category)
-        String cacheKey = Constants.CACHE_KEY_PREFIX + userId + "::" + role.toUpperCase() + "::" + category + "::" + tickets.size();
+        // Initialize ticket size variable
+        long ticketSize = 0;
 
-        // Try to get cached result
-        Map<String, Long> cachedResult = (Map<String, Long>) redisTemplate.opsForValue().get(cacheKey);
-        if (cachedResult != null) {
-            return cachedResult;
+        // Generate cache keys for active and resolved counts
+        String cacheKeyActive;
+        String cacheKeyResolved;
+
+        long activeCount;
+        long resolvedCount;
+
+        // If category is "ALL", make a DB call to fetch counts for all tickets
+        if (Constants.STATUS_ALL.equalsIgnoreCase(category)) {
+            activeCount = ticketRepository.countByStatusAndCategoryAndUserId(Status.ACTIVE, null, userId, role);
+            resolvedCount = ticketRepository.countByStatusAndCategoryAndUserId(Status.RESOLVED, null, userId, role);
+            ticketSize = ticketRepository.countByUserId(userId, role);  // Fetch the total size of tickets for the user
+
+            // Generate the cache key by adding ticket size
+            cacheKeyActive = Constants.CACHE_KEY_PREFIX + userId + "::" + role.toUpperCase() + "::" + category + "::ACTIVE::" + ticketSize;
+            cacheKeyResolved = Constants.CACHE_KEY_PREFIX + userId + "::" + role.toUpperCase() + "::" + category + "::RESOLVED::" + ticketSize;
+
+        } else {
+            // Handle specific categories
+            Category ticketCategory;
+            switch (category.toLowerCase()) {
+                case "prebooking":
+                    ticketCategory = Category.PREBOOKING;
+                    break;
+                case "postbooking":
+                    ticketCategory = Category.POSTBOOKING;
+                    break;
+                default:
+                    throw new IllegalArgumentException("Invalid category: " + category);
+            }
+
+            activeCount = ticketRepository.countByStatusAndCategoryAndUserId(Status.ACTIVE, ticketCategory, userId, role);
+            resolvedCount = ticketRepository.countByStatusAndCategoryAndUserId(Status.RESOLVED, ticketCategory, userId, role);
+            ticketSize = ticketRepository.countByCategoryAndUserId(ticketCategory, userId, role);  // Fetch the ticket size for the category
+
+            // Generate the cache key by adding ticket size
+            cacheKeyActive = Constants.CACHE_KEY_PREFIX + userId + "::" + role.toUpperCase() + "::" + category + "::ACTIVE::" + ticketSize;
+            cacheKeyResolved = Constants.CACHE_KEY_PREFIX + userId + "::" + role.toUpperCase() + "::" + category + "::RESOLVED::" + ticketSize;
         }
 
-        // Cache miss - compute fresh result
-        tickets = tickets.stream()
-                .filter(ticket -> {
-                    // Filter by userId and role
-                    boolean isUserMatch = (role.equalsIgnoreCase(Constants.ROLE_AGENT) && ticket.getAgent() != null && ticket.getAgent().getUserId() == userId) ||
-                            (role.equalsIgnoreCase(Constants.ROLE_CUSTOMER) && ticket.getCustomer() != null && ticket.getCustomer().getUserId() == userId);
+        // Try to get cached result for active and resolved counts
+        Long cachedActiveCount = (Long) redisTemplate.opsForValue().get(cacheKeyActive);
+        Long cachedResolvedCount = (Long) redisTemplate.opsForValue().get(cacheKeyResolved);
 
-                    // Filter by category
-                    boolean isCategoryMatch = category != null  &&  category.equalsIgnoreCase(Constants.STATUS_ALL) || category.equalsIgnoreCase(String.valueOf(ticket.getCategory()));
+        // If both counts are cached, return them
+        if (cachedActiveCount != null && cachedResolvedCount != null) {
+            Map<String, Long> counts = new HashMap<>();
+            counts.put(Constants.STATUS_ACTIVE, cachedActiveCount);
+            counts.put(Constants.STATUS_RESOLVED, cachedResolvedCount);
+            return counts;
+        }
 
-                    return isUserMatch && isCategoryMatch;
-                })
-                .collect(Collectors.toList());
-
-        long activeCount = tickets.stream()
-                .filter(ticket -> ticket.getStatus() == Status.ACTIVE)
-                .count();
-
-        long resolvedCount = tickets.stream()
-                .filter(ticket -> ticket.getStatus() == Status.RESOLVED)
-                .count();
-
+        // Prepare counts map
         Map<String, Long> counts = new HashMap<>();
         counts.put(Constants.STATUS_ACTIVE, activeCount);
         counts.put(Constants.STATUS_RESOLVED, resolvedCount);
 
-        // Cache the result with TTL
-        redisTemplate.opsForValue().set(cacheKey, counts, Duration.ofMinutes(Constants.CACHE_TTL));
+        // Cache the results for active and resolved counts with TTL
+        redisTemplate.opsForValue().set(cacheKeyActive, activeCount, Duration.ofMinutes(Constants.CACHE_TTL));
+        redisTemplate.opsForValue().set(cacheKeyResolved, resolvedCount, Duration.ofMinutes(Constants.CACHE_TTL));
 
         return counts;
     }

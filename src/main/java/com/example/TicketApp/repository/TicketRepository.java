@@ -2,6 +2,7 @@ package com.example.TicketApp.repository;
 
 import com.example.TicketApp.entity.Ticket;
 import com.example.TicketApp.entity.User;
+import com.example.TicketApp.enums.Category;
 import com.example.TicketApp.enums.Role;
 import com.example.TicketApp.enums.Status;
 import org.springframework.data.domain.Page;
@@ -39,4 +40,28 @@ public interface TicketRepository extends JpaRepository<Ticket, Long> {
              @Param("role") Role role,
              @Param("bookingCategory") String bookingCategory,
              Pageable pageable);
+
+
+          @Query("SELECT COUNT(t) FROM Ticket t WHERE t.status = :status AND " +
+                  "((:role = 'AGENT' AND t.agent.userId = :userId) OR (:role = 'CUSTOMER' AND t.customer.userId = :userId)) " +
+                  "AND (:category IS NULL OR t.category = :category)")
+          long countByStatusAndCategoryAndUserId(@Param("status") Status status,
+                                                  @Param("category") Category category,
+                                                  @Param("userId") long userId,
+                                                  @Param("role") String role);
+
+
+
+     // Count tickets by user ID and role (for "ALL" category)
+     @Query("SELECT COUNT(t) FROM Ticket t WHERE " +
+             "((:role = 'AGENT' AND t.agent.userId = :userId) OR (:role = 'CUSTOMER' AND t.customer.userId = :userId))")
+     long countByUserId(@Param("userId") long userId, @Param("role") String role);
+
+     // Count tickets by category and user ID
+     @Query("SELECT COUNT(t) FROM Ticket t WHERE t.category = :category AND " +
+             "((:role = 'AGENT' AND t.agent.userId = :userId) OR (:role = 'CUSTOMER' AND t.customer.userId = :userId))")
+     long countByCategoryAndUserId(@Param("category") Category category,
+                                    @Param("userId") long userId,
+                                    @Param("role") String role);
+
 }
