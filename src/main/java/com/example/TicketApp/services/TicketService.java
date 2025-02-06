@@ -229,34 +229,43 @@ public class TicketService {
         }
         return agents.get(new Random().nextInt(agents.size()));
     }
-
-    public Map<String, List<SimpleTicketDTO>> getFilteredTickets(long userId, String role, String status, Pageable pageable) {
+    public Map<String, List<SimpleTicketDTO>> getFilteredTickets(long userId, String role, String status, String bookingCategory, Pageable pageable) {
         // Validate the role
         if (role == null || (!role.equalsIgnoreCase(Constants.ROLE_AGENT) && !role.equalsIgnoreCase(Constants.ROLE_CUSTOMER))) {
             throw new IllegalArgumentException(Constants.MESSAGE_INVALID_ROLE);
         }
 
+        // Validate booking category
+        if (!"prebooking".equalsIgnoreCase(bookingCategory) && !"postbooking".equalsIgnoreCase(bookingCategory)) {
+            throw new IllegalArgumentException("Invalid booking category: " + bookingCategory);
+        }
+
         // Handle the "ALL" status case
         Page<Ticket> ticketPage;
-        if (status != null && status.equalsIgnoreCase(Constants.STATUS_ALL)) {
+        if (Constants.STATUS_ALL.equalsIgnoreCase(status)) {
             // Fetch tickets without filtering by status if status is "ALL"
-            ticketPage = ticketRepository.findAllTicketsWithoutStatus(userId, Role.valueOf(role.toUpperCase()), pageable);
+            ticketPage = ticketRepository.findAllTicketsWithoutStatusAndBookingCategory(userId, Role.valueOf(role.toUpperCase()), bookingCategory, pageable);
         } else {
-            // Otherwise, fetch tickets with status filtering
-            Status statusEnum = Status.valueOf(status.toUpperCase());
-            ticketPage = ticketRepository.findByUserIdAndRoleAndStatus(userId, Role.valueOf(role.toUpperCase()), statusEnum, pageable);
+            // Validate and convert status to enum
+            Status statusEnum;
+            try {
+                statusEnum = Status.valueOf(status.toUpperCase());
+            } catch (IllegalArgumentException e) {
+                throw new IllegalArgumentException("Invalid status: " + status);
+            }
+            // Fetch tickets with status and booking category filtering
+            ticketPage = ticketRepository.findByUserIdAndRoleAndStatusAndBookingCategory(userId, Role.valueOf(role.toUpperCase()), statusEnum, bookingCategory, pageable);
         }
 
         List<Ticket> tickets = ticketPage.getContent();
 
-        // Separate tickets into Prebooking and Postbooking
-        List<SimpleTicketDTO> prebookingTickets = new ArrayList<>();
-        List<SimpleTicketDTO> postbookingTickets = new ArrayList<>();
+        // Create a list to hold the filtered tickets
+        List<SimpleTicketDTO> filteredTickets = new ArrayList<>();
 
         for (Ticket ticket : tickets) {
             // Get Customer and Agent emails
-            String customerEmail = ticket.getCustomer() != null ? ticket.getCustomer().getEmail() : Constants.NO_EMAIL;
-            String agentEmail = ticket.getAgent() != null ? ticket.getAgent().getEmail() : Constants.NO_EMAIL;
+            String customerEmail = (ticket.getCustomer() != null) ? ticket.getCustomer().getEmail() : Constants.NO_EMAIL;
+            String agentEmail = (ticket.getAgent() != null) ? ticket.getAgent().getEmail() : Constants.NO_EMAIL;
 
             // Create DTO with email addresses included
             SimpleTicketDTO dto = new SimpleTicketDTO(
@@ -268,22 +277,16 @@ public class TicketService {
                     agentEmail
             );
 
-            if (ticket.getBooking() == null) {
-                // No booking ID exists, this is a prebooking ticket
-                prebookingTickets.add(dto);
-            } else {
-                postbookingTickets.add(dto);
-            }
+            // Add the ticket DTO to the list
+            filteredTickets.add(dto);
         }
 
-        // Create a map to hold prebooking and postbooking tickets
+        // Create a map to hold the filtered tickets
         Map<String, List<SimpleTicketDTO>> result = new HashMap<>();
-        result.put("PrebookingTickets", prebookingTickets);
-        result.put("PostbookingTickets", postbookingTickets);
+        result.put(bookingCategory.equalsIgnoreCase("prebooking") ? "PrebookingTickets" : "PostbookingTickets", filteredTickets);
 
         return result;
     }
-
 
     public List<TicketResponseDTO> getAllTicketResponses(long userId, long ticketId) {
         Ticket ticket = ticketRepository.findById(ticketId)
@@ -292,14 +295,14 @@ public class TicketService {
         List<TicketResponse> ticketResponses = ticket.getResponses();
         List<TicketResponseDTO> repliesDTO = new ArrayList<>();
         for (TicketResponse ticketResponse : ticketResponses) {
-            User user = ticketResponse.getUser();
+            User user = ticketResponse.getUser ();
 
             TicketResponseDTO responseDTO = new TicketResponseDTO(
                     ticketResponse.getResponseId(),                // Response ID
                     ticket.getTicketId(),                          // Associated Ticket ID
                     ticketResponse.getResponseText(),              // Response Text
                     ticketResponse.getRole().toString(),           // Role
-                    ticketResponse.getUser().getEmail(),           // User's Email
+                    ticketResponse.getUser ().getEmail(),           // User's Email
                     ticket.getAgent() != null ? ticket.getAgent().getEmail() : null, // Agent's Email
                     ticketResponse.getCreatedAt()                  // Created At Timestamp
             );

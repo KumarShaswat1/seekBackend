@@ -54,14 +54,20 @@ public class TicketController {
                     user_id, role, status, page, size);
 
             // Create a Pageable object for pagination
-            Pageable pageable = PageRequest.of(page, size);
+            Pageable pageable = PageRequest.of(page, size / 2); // Half size for each category
 
-            // Get filtered tickets with Prebooking and Postbooking separation
-            Map<String, List<SimpleTicketDTO>> tickets = ticketService.getFilteredTickets(user_id, role, status, pageable);
+            // Get filtered tickets for Prebooking
+            Map<String, List<SimpleTicketDTO>> prebookingTickets = ticketService.getFilteredTickets(user_id, role, status, "prebooking", pageable);
+            logger.info("Prebooking tickets fetched: {}", prebookingTickets);
+
+            // Get filtered tickets for Postbooking
+            Map<String, List<SimpleTicketDTO>> postbookingTickets = ticketService.getFilteredTickets(user_id, role, status, "postbooking", pageable);
+            logger.info("Postbooking tickets fetched: {}", postbookingTickets);
 
             // Prepare the response with the required structure
             response.put("status", "success");
-            response.put("data", tickets);  // The map with PrebookingTickets and PostbookingTickets
+            response.put("PrebookingTickets", prebookingTickets.get("PrebookingTickets")); // Directly add prebooking tickets
+            response.put("PostbookingTickets", postbookingTickets.get("PostbookingTickets")); // Directly add postbooking tickets
 
             return ResponseEntity.ok(response);
         } catch (BookingNotFoundException e) {
@@ -81,7 +87,6 @@ public class TicketController {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
         }
     }
-
     @GetMapping("/search/{userId}/{ticketId}")
     public ResponseEntity<Map<String, Object>> searchTicket(
             @PathVariable long userId,

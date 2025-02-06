@@ -13,24 +13,30 @@ import org.springframework.stereotype.Repository;
 
 import java.util.List;
 import java.util.Optional;
-
 @Repository
-public interface TicketRepository extends JpaRepository<Ticket,Long> {
+public interface TicketRepository extends JpaRepository<Ticket, Long> {
 
      Optional<Ticket> findById(long ticketId);
 
-          @Query("SELECT t FROM Ticket t " +
-                  "WHERE (:userId IS NULL OR t.customer.userId = :userId OR t.agent.userId = :userId) " +
-                  "AND (:role IS NULL OR t.customer.role = :role OR t.agent.role = :role) " +
-                  "AND (:status IS NULL OR t.status = :status)")
-          Page<Ticket> findByUserIdAndRoleAndStatus(
-                  @Param("userId") Long userId,
-                  @Param("role") Role role,
-                  @Param("status") Status status,
-                  Pageable pageable);
+     @Query("SELECT t FROM Ticket t " +
+             "WHERE (:userId IS NULL OR t.customer.userId = :userId OR t.agent.userId = :userId) " +
+             "AND (:role IS NULL OR t.customer.role = :role OR t.agent.role = :role) " +
+             "AND (:status IS NULL OR t.status = :status) " +
+             "AND (:bookingCategory IS NULL OR (t.booking IS NULL AND :bookingCategory = 'prebooking') OR (t.booking IS NOT NULL AND :bookingCategory = 'postbooking'))")
+     Page<Ticket> findByUserIdAndRoleAndStatusAndBookingCategory(
+             @Param("userId") Long userId,
+             @Param("role") Role role,
+             @Param("status") Status status,
+             @Param("bookingCategory") String bookingCategory,
+             Pageable pageable);
 
      @Query("SELECT t FROM Ticket t " +
              "WHERE (:userId IS NULL OR t.customer.userId = :userId OR t.agent.userId = :userId) " +
-             "AND (:role IS NULL OR t.customer.role = :role OR t.agent.role = :role)")
-     Page<Ticket> findAllTicketsWithoutStatus(long userId, Role role, Pageable pageable);
+             "AND (:role IS NULL OR t.customer.role = :role OR t.agent.role = :role) " +
+             "AND (:bookingCategory IS NULL OR (t.booking IS NULL AND :bookingCategory = 'prebooking') OR (t.booking IS NOT NULL AND :bookingCategory = 'postbooking'))")
+     Page<Ticket> findAllTicketsWithoutStatusAndBookingCategory(
+             @Param("userId") Long userId,
+             @Param("role") Role role,
+             @Param("bookingCategory") String bookingCategory,
+             Pageable pageable);
 }

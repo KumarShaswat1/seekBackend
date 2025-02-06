@@ -19,12 +19,12 @@ public class Constants {
     public static final String MESSAGE_INVALID_ROLE = "Role must be 'CUSTOMER' or 'AGENT'";
 
     // HTTP Status Codes (Numeric)
-    public static final int HTTP_STATUS_CREATED = 201;
-    public static final int HTTP_STATUS_OK = 200;
-    public static final int HTTP_STATUS_BAD_REQUEST = 400;
-    public static final int HTTP_STATUS_NOT_FOUND = 404;
-    public static final int HTTP_STATUS_UNAUTHORIZED = 401;
-    public static final int HTTP_STATUS_FORBIDDEN = 403;
+//    public static final int HTTP_STATUS_CREATED = 201;
+//    public static final int HTTP_STATUS_OK = 200;
+//    public static final int HTTP_STATUS_BAD_REQUEST = 400;
+//    public static final int HTTP_STATUS_NOT_FOUND = 404;
+//    public static final int HTTP_STATUS_UNAUTHORIZED = 401;
+//    public static final int HTTP_STATUS_FORBIDDEN = 403;
 
     // Roles
     public static final String ROLE_CUSTOMER = "CUSTOMER";
