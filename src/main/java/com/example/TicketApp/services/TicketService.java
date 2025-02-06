@@ -17,6 +17,8 @@ import com.example.TicketApp.repository.TicketRepository;
 import com.example.TicketApp.repository.TicketResponseRepository;
 import com.example.TicketApp.repository.UserRespository;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.cache.annotation.CacheEvict;
@@ -35,6 +37,7 @@ public class TicketService {
 
     private static final Logger logger = LoggerFactory.getLogger(TicketService.class);
 
+    private final ObjectMapper objectMapper;
     private final UserRespository userRespository;
     private final TicketRepository ticketRepository;
     private final TicketResponseRepository ticketResponseRepository;
@@ -42,87 +45,61 @@ public class TicketService {
     private final RedisTemplate<String, Object> redisTemplate;
 
     public TicketService(UserRespository userRespository, TicketRepository ticketRepository, TicketResponseRepository ticketResponseRepository,
-                         BookingRespository bookingRespository, RedisTemplate<String, Object> redisTemplate) {
+                         BookingRespository bookingRespository, RedisTemplate<String, Object> redisTemplate,ObjectMapper objectMapper) {
         this.userRespository = userRespository;
         this.ticketRepository = ticketRepository;
         this.ticketResponseRepository = ticketResponseRepository;
         this.bookingRespository = bookingRespository;
         this.redisTemplate = redisTemplate;
+        this.objectMapper=objectMapper;
     }
+
 
     public Map<String, Long> getCountActiveResolved(long userId, String role, String category) {
         // Validate role
-        if (role == null ||
-                !(role.equalsIgnoreCase(Constants.ROLE_AGENT) || role.equalsIgnoreCase(Constants.ROLE_CUSTOMER))) {
-            throw new IllegalArgumentException(Constants.MESSAGE_INVALID_ROLE);
+        if (role == null || (!role.equalsIgnoreCase("AGENT") && !role.equalsIgnoreCase("CUSTOMER"))) {
+            throw new IllegalArgumentException("Invalid role. Role must be 'AGENT' or 'CUSTOMER'.");
         }
 
-        // Initialize ticket size variable
-        long ticketSize = 0;
+        List<Ticket> tickets;
 
-        // Generate cache keys for active and resolved counts
-        String cacheKeyActive;
-        String cacheKeyResolved;
-
-        long activeCount;
-        long resolvedCount;
-
-        // If category is "ALL", make a DB call to fetch counts for all tickets
-        if (Constants.STATUS_ALL.equalsIgnoreCase(category)) {
-            activeCount = ticketRepository.countByStatusAndCategoryAndUserId(Status.ACTIVE, null, userId, role);
-            resolvedCount = ticketRepository.countByStatusAndCategoryAndUserId(Status.RESOLVED, null, userId, role);
-            ticketSize = ticketRepository.countByUserId(userId, role);  // Fetch the total size of tickets for the user
-
-            // Generate the cache key by adding ticket size
-            cacheKeyActive = Constants.CACHE_KEY_PREFIX + userId + "::" + role.toUpperCase() + "::" + category + "::ACTIVE::" + ticketSize;
-            cacheKeyResolved = Constants.CACHE_KEY_PREFIX + userId + "::" + role.toUpperCase() + "::" + category + "::RESOLVED::" + ticketSize;
-
+        // Fetch from DB (using @EntityGraph to optimize query)
+        if (category.equalsIgnoreCase("ALL")) {
+            tickets = ticketRepository.findByUserIdAndRoleForAllCategories(userId, role);
         } else {
-            // Handle specific categories
-            Category ticketCategory;
-            switch (category.toLowerCase()) {
-                case "prebooking":
-                    ticketCategory = Category.PREBOOKING;
-                    break;
-                case "postbooking":
-                    ticketCategory = Category.POSTBOOKING;
-                    break;
-                default:
-                    throw new IllegalArgumentException("Invalid category: " + category);
+            tickets = ticketRepository.findByUserIdRoleAndCategory(userId, role, category);
+        }
+
+        // Generate cache key
+        String cacheKey = Constants.CACHE_KEY_PREFIX + userId + "::" + role.toUpperCase() + "::" + category + "::" + tickets.size();
+
+        // Try fetching from cache
+        String cachedJson = (String) redisTemplate.opsForValue().get(cacheKey);
+        if (cachedJson != null) {
+            try {
+                return objectMapper.readValue(cachedJson, new TypeReference<Map<String, Long>>() {});
+            } catch (Exception e) {
+                e.printStackTrace();
             }
-
-            activeCount = ticketRepository.countByStatusAndCategoryAndUserId(Status.ACTIVE, ticketCategory, userId, role);
-            resolvedCount = ticketRepository.countByStatusAndCategoryAndUserId(Status.RESOLVED, ticketCategory, userId, role);
-            ticketSize = ticketRepository.countByCategoryAndUserId(ticketCategory, userId, role);  // Fetch the ticket size for the category
-
-            // Generate the cache key by adding ticket size
-            cacheKeyActive = Constants.CACHE_KEY_PREFIX + userId + "::" + role.toUpperCase() + "::" + category + "::ACTIVE::" + ticketSize;
-            cacheKeyResolved = Constants.CACHE_KEY_PREFIX + userId + "::" + role.toUpperCase() + "::" + category + "::RESOLVED::" + ticketSize;
         }
 
-        // Try to get cached result for active and resolved counts
-        Long cachedActiveCount = (Long) redisTemplate.opsForValue().get(cacheKeyActive);
-        Long cachedResolvedCount = (Long) redisTemplate.opsForValue().get(cacheKeyResolved);
+        // Compute counts
+        long activeCount = tickets.stream().filter(ticket -> ticket.getStatus() == Status.ACTIVE).count();
+        long resolvedCount = tickets.stream().filter(ticket -> ticket.getStatus() == Status.RESOLVED).count();
 
-        // If both counts are cached, return them
-        if (cachedActiveCount != null && cachedResolvedCount != null) {
-            Map<String, Long> counts = new HashMap<>();
-            counts.put(Constants.STATUS_ACTIVE, cachedActiveCount);
-            counts.put(Constants.STATUS_RESOLVED, cachedResolvedCount);
-            return counts;
+        // Store in response
+        Map<String, Long> counts = Map.of("ACTIVE", activeCount, "RESOLVED", resolvedCount);
+
+        // Store in cache
+        try {
+            redisTemplate.opsForValue().set(cacheKey, objectMapper.writeValueAsString(counts), Duration.ofMinutes(Constants.CACHE_TTL));
+        } catch (Exception e) {
+            e.printStackTrace();
         }
-
-        // Prepare counts map
-        Map<String, Long> counts = new HashMap<>();
-        counts.put(Constants.STATUS_ACTIVE, activeCount);
-        counts.put(Constants.STATUS_RESOLVED, resolvedCount);
-
-        // Cache the results for active and resolved counts with TTL
-        redisTemplate.opsForValue().set(cacheKeyActive, activeCount, Duration.ofMinutes(Constants.CACHE_TTL));
-        redisTemplate.opsForValue().set(cacheKeyResolved, resolvedCount, Duration.ofMinutes(Constants.CACHE_TTL));
 
         return counts;
     }
+
 
     public Map<String, Object> searchTicket(long userId, long ticketId, int page, int size) {
         Map<String, Object> responseMap = new HashMap<>();
