@@ -28,4 +28,9 @@ public interface TicketRepository extends JpaRepository<Ticket,Long> {
                   @Param("role") Role role,
                   @Param("status") Status status,
                   Pageable pageable);
-     }
+
+     @Query("SELECT t FROM Ticket t " +
+             "WHERE (:userId IS NULL OR t.customer.userId = :userId OR t.agent.userId = :userId) " +
+             "AND (:role IS NULL OR t.customer.role = :role OR t.agent.role = :role)")
+     Page<Ticket> findAllTicketsWithoutStatus(long userId, Role role, Pageable pageable);
+}
