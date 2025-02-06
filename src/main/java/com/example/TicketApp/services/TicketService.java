@@ -236,14 +236,18 @@ public class TicketService {
             throw new IllegalArgumentException(Constants.MESSAGE_INVALID_ROLE);
         }
 
-        // Fetch tickets based on userId, role, and status
-        Page<Ticket> ticketPage = ticketRepository.findByUserIdAndRoleAndStatus(userId, Role.valueOf(role.toUpperCase()), Status.valueOf(status.toUpperCase()), pageable);
-        List<Ticket> tickets = ticketPage.getContent();
+        // Handle the "ALL" status case
+        Page<Ticket> ticketPage;
+        if (status != null && status.equalsIgnoreCase(Constants.STATUS_ALL)) {
+            // Fetch tickets without filtering by status if status is "ALL"
+            ticketPage = ticketRepository.findAllTicketsWithoutStatus(userId, Role.valueOf(role.toUpperCase()), pageable);
+        } else {
+            // Otherwise, fetch tickets with status filtering
+            Status statusEnum = Status.valueOf(status.toUpperCase());
+            ticketPage = ticketRepository.findByUserIdAndRoleAndStatus(userId, Role.valueOf(role.toUpperCase()), statusEnum, pageable);
+        }
 
-        // Filter tickets based on status
-        tickets = tickets.stream()
-                .filter(ticket -> Constants.STATUS_ALL.equalsIgnoreCase(status) || ticket.getStatus().name().equalsIgnoreCase(status))
-                .collect(Collectors.toList());
+        List<Ticket> tickets = ticketPage.getContent();
 
         // Separate tickets into Prebooking and Postbooking
         List<SimpleTicketDTO> prebookingTickets = new ArrayList<>();
@@ -279,6 +283,7 @@ public class TicketService {
 
         return result;
     }
+
 
     public List<TicketResponseDTO> getAllTicketResponses(long userId, long ticketId) {
         Ticket ticket = ticketRepository.findById(ticketId)
